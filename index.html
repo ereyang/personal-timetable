@@ -130,6 +130,9 @@
 
   footer { margin-top: 34px; font-size: 13px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
   footer button { font-size: 13px; padding: 6px 10px; }
+  details#loader { padding: 12px 18px; }
+  details#loader summary { cursor: pointer; font-size: 15px; }
+  details#loader[open] summary { margin-bottom: 12px; }
   .drop { border: 2px dashed var(--line); border-radius: 14px; padding: 26px 16px; text-align: center; color: var(--muted); }
   .drop.over { border-color: var(--accent); background: var(--accent-soft); }
   .drop b { color: var(--ink); }
@@ -186,8 +189,8 @@
     <div class="sub" id="dataInfo">시간표를 불러오는 중…</div>
   </header>
 
-  <section class="card no-print" id="loader" hidden>
-    <h2 style="margin:0 0 10px;font-size:18px">🔓 담당자 · 시간표 올리기</h2>
+  <details class="card no-print" id="loader" hidden>
+    <summary><b>📂 시간표 파일 올리기</b> <span class="meta" id="fileShort"></span></summary>
     <div class="drop" id="drop">
       <p><b>엑셀 파일</b>을 여기에 끌어다 놓거나</p>
       <button class="primary" id="pickBtn">📂 파일 선택</button>
@@ -198,16 +201,7 @@
     <div class="files" id="fileState"></div>
     <p id="adminStatus" style="margin:12px 2px 0;font-size:14px"></p>
 
-    <h3 style="margin:22px 0 4px;font-size:16px">📅 1·2학년 특별한 날</h3>
-    <p style="margin:0;font-size:13px;color:var(--muted)">3학년 시간표의 날짜 메모(금요일수업, 1,2학년 현장체험, 휴업일 등)를 보고 자동으로 정했어요. 다르면 바꾸고 저장하세요.</p>
-    <table class="cal" id="calTable"></table>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center">
-      <input type="date" id="calAddDate" style="width:auto">
-      <button id="calAdd">+ 날짜 추가</button>
-      <button class="primary" id="calSave">💾 특별한 날 저장</button>
-      <span id="calStatus" style="font-size:13px;color:var(--muted)"></span>
-    </div>
-  </section>
+  </details>
 
   <div class="tabs no-print" id="tabs" hidden>
     <button data-v="me" class="on">👤 개인시간표</button>
@@ -238,6 +232,18 @@
   </section>
 
   <section id="result"></section>
+
+  <section class="card no-print" id="calCard" hidden>
+    <h3 style="margin:0 0 4px;font-size:16px">📅 1·2학년 특별한 날</h3>
+    <p style="margin:0;font-size:13px;color:var(--muted)">3학년 시간표의 날짜 메모(금요일수업, 1,2학년 현장체험, 휴업일 등)를 보고 자동으로 정했어요. 다르면 바꾸고 저장하세요.</p>
+    <table class="cal" id="calTable"></table>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center">
+      <input type="date" id="calAddDate" style="width:auto">
+      <button id="calAdd">+ 날짜 추가</button>
+      <button class="primary" id="calSave">💾 특별한 날 저장</button>
+      <span id="calStatus" style="font-size:13px;color:var(--muted)"></span>
+    </div>
+  </section>
 
   <footer class="no-print">
     <span id="footNote"></span>
@@ -361,7 +367,8 @@
   }
 
   function showAdmin() {
-    $('loader').hidden = !adminPw;
+    $('loader').hidden = $('calCard').hidden = !adminPw;
+    $('fileShort').textContent = '· ' + [D ? '3학년 ✔' : '3학년 없음', W ? '1·2학년 ✔' : '1·2학년 없음'].join(' · ') + (server.updated ? ' · 마지막 저장 ' + fmtTime(server.updated) : '') + ' (눌러서 펼치기)';
     $('adminBtn').textContent = adminPw ? '🔓 담당자 모드 끝내기' : '🔐 담당자';
     $('fileState').innerHTML =
       '<div><b>① 3학년 날짜별 시간표</b>' + (D ? esc(D.fileName || D.title) + '<br>' + md(D.from) + ' ~ ' + md(D.to) + ' · 선생님 ' + D.teachers.length + '명' : '아직 없음') + '</div>'
