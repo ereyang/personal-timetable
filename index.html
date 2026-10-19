@@ -95,6 +95,31 @@
   .full td.ev { font-size: 14px; }
   .full tr.dayend td { border-bottom: 2px solid #8a93a1; }
   .full td.hl { background: #fff3a8; }
+  .full td.slot { cursor: pointer; }
+  .full td.slot:hover { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .full td.chg { background: #ffe1b8; }
+  .full td.dup { background: #ffb4b4; }
+  .full td.vac { background: #dcc8ff; }
+  .full td.vac .t { color: #5b21b6; font-weight: 600; }
+  .cell.chg { box-shadow: inset 0 0 0 2px #f59e0b; }
+  .cell.dup { box-shadow: inset 0 0 0 2px #dc2626; }
+  .cell.sel { background: #2f6fde; color: #fff; }
+
+  .modal { position: fixed; inset: 0; background: rgba(20, 24, 33, .45); z-index: 50; display: flex; align-items: flex-start; justify-content: center; padding: 24px 12px; overflow-y: auto; }
+  .modal[hidden] { display: none; }
+  .mbox { background: #fff; border-radius: 16px; padding: 18px; width: 100%; max-width: 980px; box-shadow: 0 20px 50px rgba(0,0,0,.25); }
+  .mhead { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+  .mhead h2 { margin: 0; font-size: 20px; }
+  .meta { color: var(--muted); font-size: 14px; }
+  table.swap td { height: 50px; vertical-align: top; padding: 2px; }
+  table.swap .cell { font-size: 14px; margin: 3px; padding: 4px 3px; }
+  button.cand { display: block; width: calc(100% - 6px); margin: 3px; padding: 4px 3px; font-size: 13px; font-weight: 700; border-radius: 8px; line-height: 1.25; }
+  button.cand small { display: block; font-weight: 500; font-size: 11px; }
+  button.cand.ok { background: #dcfce7; border-color: #22c55e; color: #166534; }
+  button.cand.warn { background: #fff7ed; border-color: #fb923c; color: #9a3412; }
+  button:disabled { opacity: .55; cursor: not-allowed; }
+  .direct { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; font-size: 14px; }
+  .direct input { font-size: 14px; padding: 7px 9px; }
 
   footer { margin-top: 34px; font-size: 13px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
   footer button { font-size: 13px; padding: 6px 10px; }
@@ -196,6 +221,7 @@
   </footer>
   <input type="file" id="file" accept=".xlsx,.xlsm" hidden>
 </div>
+<div class="modal no-print" id="modal" hidden><div class="mbox" id="swapBox"></div></div>
 
 <script>
 (function () {
@@ -213,6 +239,8 @@
   let D = null;          // 3학년 날짜별 시간표
   let W = null;          // 요일별 전체시간표에서 뽑은 1·2학년
   let CAL = {};          // 날짜별 1·2학년 운영 (담당자가 바꾼 것)
+  let CHG = {};          // 수업 교체: 날짜 → { 'p|col': {s, t} }
+  let LOG = [];          // 교체 내역: [{at, desc, cells:[{d, k, before, after}]}]
   let by3 = {}, by12 = {};
   let view = store.get(VIEW_KEY) === 'all' ? 'all' : 'me';
 
@@ -304,7 +332,7 @@
 
   const fmtTime = s => { const d = new Date(s); return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0'); };
   function cacheSave(updated) {
-    store.set(KEY, JSON.stringify({ data: D, g12: W, cal: CAL }));
+    store.set(KEY, JSON.stringify({ data: D, g12: W, cal: CAL, chg: { CHG, LOG } }));
     store.set(KEY + '.updated', updated || '');
   }
 
@@ -416,7 +444,7 @@
     if (s) {
       try {
         const c = JSON.parse(s);
-        if (c && c.lessons) D = c; else if (c) { D = c.data || null; W = c.g12 || null; CAL = c.cal || {}; }
+        if (c && c.lessons) D = c; else if (c) { D = c.data || null; W = c.g12 || null; CAL = c.cal || {}; CHG = (c.chg && c.chg.CHG) || {}; LOG = (c.chg && c.chg.LOG) || []; }
       } catch (e) {}
       if (D || W) refresh();
     }
@@ -427,6 +455,8 @@
         D = r.data ? await unpack(r.data) : null;
         W = r.g12 ? await unpack(r.g12) : null;
         CAL = r.cal || {};
+        const ch = r.chg ? await unpack(r.chg) : null;
+        CHG = (ch && ch.CHG) || {}; LOG = (ch && ch.LOG) || [];
         cacheSave(r.updated);
       }
       refresh();
@@ -498,8 +528,55 @@
     return { info, off: !!whole, label: whole ? whole.text : '' };
   }
 
+  // ---------- 날짜별 수업 칸 (원래 시간표 + 교체 내역) ----------
+  // 칸 키 col: 'a:1-3' (1·2학년 칸) / 'c:3반' (3학년 칸),  셀 키: 'p|col'
+  let dayCache = {};
+  const invalidate = () => { dayCache = {}; };
+  function dayCells(d) {
+    if (dayCache[d]) return dayCache[d];
+    const pl = W ? plan12(d) : { mode: 'off' }, s3 = day3(d);
+    const dw = W ? dow12(d, pl) : null;
+    const maxP12 = W && pl.mode !== 'off' ? (W.maxP[dw] || 0) : 0;
+    const info = s3.info;
+    const maxP3 = info && !s3.off ? info.maxP : 0;
+    const evP = new Set(info ? info.events.flatMap(e => e.periods) : []);
+    const cells = {};
+    if (maxP12) W.lessons.filter(l => l.dow === dw).forEach(l => {
+      const col = 'a:' + l.col;
+      cells[l.p + '|' + col] = { p: l.p, col, g: +l.col[0] || 2, s: l.subject, t: l.teacher };
+    });
+    if (maxP3) D.lessons.filter(l => l.date === d && !l.deleted && !evP.has(l.p)).forEach(l => {
+      const col = 'c:' + l.place, k = l.p + '|' + col;
+      if (cells[k]) cells[k].t += ', ' + l.teacher;
+      else cells[k] = { p: l.p, col, g: 3, s: l.sub || '', t: l.teacher };
+    });
+    Object.values(cells).forEach(c => { c.base = { s: c.s, t: c.t }; });
+    const valid = (p, col) => col.startsWith('a:') ? p <= maxP12 : (p <= maxP3 && !evP.has(p));
+    Object.entries(CHG[d] || {}).forEach(([k, v]) => {
+      const [p, col] = [+k.split('|')[0], k.slice(k.indexOf('|') + 1)];
+      if (!valid(p, col)) return;
+      const c = cells[k] || (cells[k] = { p, col, g: col.startsWith('c:') ? 3 : (+col[2] || 2), base: null });
+      c.s = v.s; c.t = v.t; c.changed = true;
+    });
+    // 같은 시간 두 수업 / 비게 된 수업
+    const seen = {};
+    Object.entries(cells).forEach(([k, c]) => {
+      c.vacated = !!(c.base && c.base.t && !c.t);
+      names(c.t).forEach(n => (seen[c.p + '|' + n] = seen[c.p + '|' + n] || []).push(c));
+    });
+    Object.values(seen).forEach(list => { if (list.length > 1) list.forEach(c => { c.dup = true; }); });
+    return (dayCache[d] = { d, pl, s3, dw, maxP12, maxP3, cells, valid, maxP: Math.max(maxP12, maxP3) });
+  }
+  const colLabel = col => col.startsWith('a:') ? ((W && W.cols.find(c => c.key === col.slice(2)) || {}).label || col.slice(2)) : place3(col.slice(2));
+  function busyAt(name, d, p, exceptCol) {
+    return Object.values(dayCells(d).cells).filter(c => c.p === p && c.col !== exceptCol && names(c.t).includes(name));
+  }
+  const weekDays = d => { const m = monday(parseIso(d)); return [0, 1, 2, 3, 4].map(i => iso(addDays(m, i))); };
+  const slotName = (d, p) => md(d) + '(' + dowOf(d) + ') ' + p + '교시';
+
   // ---------- 개인시간표 ----------
   function render() {
+    invalidate();
     if (!D && !W) return;
     if (view === 'all') return renderAll();
     const out = $('result');
@@ -518,24 +595,19 @@
     if (!rg) { out.innerHTML = '<p class="msg">기간을 선택하세요.</p>'; return; }
     const [from, to] = rg;
 
-    const mine3 = {};
-    (by3[name] || []).forEach(l => {
-      if (l.date < from || l.date > to) return;
-      ((mine3[l.date] = mine3[l.date] || {})[l.p] = mine3[l.date][l.p] || []).push(l);
-    });
-    const mine12 = {};   // 요일 → 교시 → [수업]
-    (by12[name] || []).forEach(l => ((mine12[l.dow] = mine12[l.dow] || {})[l.p] = mine12[l.dow][l.p] || []).push(l));
+    // 삭제된 3학년 수업 (빗금) 은 원본에서 따로
+    const del3 = {};
+    (by3[name] || []).forEach(l => { if (l.deleted && l.date >= from && l.date <= to) (del3[l.date + '|' + l.p] = del3[l.date + '|' + l.p] || []).push(l); });
 
     const weeks = weeksOf(from, to);
     let total = 0, html = '';
     weeks.forEach(days => {
-      const plans = {}, d3s = {}, dmax = {};
+      const plans = {}, d3s = {}, dmax = {}, dcs = {};
       days.forEach(d => {
-        plans[d] = W ? plan12(d) : { mode: 'off' };
-        d3s[d] = day3(d);
-        const m12 = plans[d].mode !== 'off' ? (W.maxP[dow12(d, plans[d])] || 0) : 0;
-        const m3 = d3s[d].info && !d3s[d].off ? d3s[d].info.maxP : 0;
-        dmax[d] = Math.max(m12, m3);
+        const dc = dcs[d] = dayCells(d);
+        plans[d] = dc.pl;
+        d3s[d] = dc.s3;
+        dmax[d] = dc.maxP;
       });
       const maxP = Math.max(6, ...Object.values(dmax));
 
@@ -578,13 +650,18 @@
             return;
           }
           const ls = [];
-          if (!off12) ((mine12[dow12(d, pl)] || {})[p] || []).forEach(l => ls.push({ k: 'g12', big: W.cols.find(c => c.key === l.col)?.label || l.col, small: l.subject }));
-          if (!s3.off && s3.info && !s3.info.events.some(e => e.periods.includes(p)))
-            ((mine3[d] || {})[p] || []).forEach(l => {
-              if (l.deleted) return ls.push({ k: 'del', big: place3(l.place), small: '삭제' });
-              const study = /도서관|자습/.test(l.place);
-              ls.push({ k: study ? 's' : 'l', big: study ? '도서관 자습감독' : place3(l.place), small: l.sub ? '3학년 ' + l.sub : '' });
-            });
+          Object.values(dcs[d].cells).filter(c => c.p === p && names(c.t).includes(name)).sort((a, b) => a.g - b.g).forEach(c => {
+            const study = /도서관|자습/.test(c.col);
+            const k = c.g < 3 ? 'g12' : study ? 's' : 'l';
+            const small = [c.g < 3 ? c.s : c.s ? '3학년 ' + c.s : ''];
+            if (c.changed) small.push('교체');
+            if (c.dup) small.push('⚠ 겹침');
+            ls.push({ k: k + (c.changed ? ' chg' : '') + (c.dup ? ' dup' : ''), big: study ? '도서관 자습감독' : colLabel(c.col), small: small.filter(Boolean).join(' · ') });
+          });
+          // 원래 내 수업이었는데 교체로 빠진 칸
+          Object.values(dcs[d].cells).filter(c => c.p === p && c.changed && c.base && names(c.base.t).includes(name) && !names(c.t).includes(name))
+            .forEach(c => ls.push({ k: 'del', big: colLabel(c.col), small: '교체로 빠짐' }));
+          (del3[d + '|' + p] || []).forEach(l => ls.push({ k: 'del', big: place3(l.place), small: '삭제' }));
           if (!ls.length && p > dmax[d]) { body += '<td class="none"></td>'; return; }
           body += '<td>' + ls.map(c => {
             if (c.k !== 'del') weekCount++;
@@ -625,12 +702,11 @@
       ...p3.map(p => ({ h: /^\d+반$/.test(p) ? p.replace('반', '') : p.replace('도서관 자습감독', '도서관 자습'), g: 3, key: p }))];
     const o12 = 2, o3 = 2 + c12.length;
     const rows = [], merges = [], dayEnds = [];
+    const colKeys = cols.map((c, i) => i < o12 ? null : i < o3 ? 'a:' + c.key : 'c:' + c.key);
     days.forEach(d => {
-      const pl = W ? plan12(d) : { mode: 'off' }, s3 = day3(d);
-      const dw = W ? dow12(d, pl) : null;
-      const m12 = W && pl.mode !== 'off' ? (W.maxP[dw] || 0) : 0;
-      const m3 = s3.info && !s3.off ? s3.info.maxP : 0;
-      const n = Math.max(m12, m3, 4);
+      const dc = dayCells(d);
+      const pl = dc.pl, s3 = dc.s3;
+      const n = Math.max(dc.maxP, 4);
       const r0 = rows.length;
       const info = s3.info;
       let dayLabel = md(d) + ' (' + dowOf(d) + ')';
@@ -641,18 +717,17 @@
         const row = new Array(cols.length).fill(null).map(() => ({ t: '', k: '' }));
         row[0] = { t: dayLabel + (sub.length ? '\n' + sub.join(' ') : ''), k: 'day' };
         row[1] = { t: String(p), k: 'per' };
-        if (W && pl.mode !== 'off' && p <= m12) {
-          W.lessons.filter(l => l.dow === dw && l.p === p).forEach(l => {
-            const ci = o12 + c12.findIndex(c => c.key === l.col);
-            row[ci] = { t: l.subject + (l.teacher ? '\n' + l.teacher : ''), k: 'g12' };
-          });
-        }
-        if (info && !s3.off) {
-          D.lessons.filter(l => l.date === d && l.p === p && !l.deleted).forEach(l => {
-            const ci = o3 + p3.indexOf(l.place);
-            const cur = row[ci].t;
-            row[ci] = { t: cur ? cur + ', ' + l.teacher : l.teacher, k: 'g3' };
-          });
+        for (let ci = o12; ci < cols.length; ci++) {
+          const col = colKeys[ci];
+          if (!dc.valid(p, col)) continue;
+          const c = dc.cells[p + '|' + col];
+          const cell = { t: '', k: '', key: d + '|' + p + '|' + col };
+          if (c) {
+            cell.k = c.g < 3 ? 'g12' : 'g3';
+            cell.t = c.g < 3 ? (c.s || '') + '\n' + (c.t || '') : c.t;
+            cell.chg = !!c.changed; cell.dup = !!c.dup; cell.vac = c.vacated;
+          }
+          row[ci] = cell;
         }
         rows.push(row);
       }
@@ -707,7 +782,10 @@
           let inner;
           if (cell.k === 'g12') { const [s, t] = cell.t.split('\n'); inner = '<div class="s">' + esc(s) + '</div><div class="t">' + esc(t || '') + '</div>'; }
           else inner = esc(cell.t).replace(/\n/g, '<br>');
-          body += '<td class="' + (cell.k === 'day' ? 'day' : cell.k === 'per' ? 'per' : cell.k === 'ev' ? 'ev' : '') + '"' + attr + '>' + inner + '</td>';
+          const cls = [cell.k === 'day' ? 'day' : cell.k === 'per' ? 'per' : cell.k === 'ev' ? 'ev' : '',
+            cell.dup ? 'dup' : cell.vac ? 'vac' : cell.chg ? 'chg' : '', cell.key ? 'slot' : ''].filter(Boolean).join(' ');
+          if (cell.vac) inner = '<div class="s">' + esc((cell.t.split('\n')[0]) || '') + '</div><div class="t">빈 수업</div>';
+          body += '<td class="' + cls + '"' + attr + (cell.key ? ' data-key="' + esc(cell.key) + '"' : '') + '>' + inner + '</td>';
         });
         body += '</tr>';
       });
@@ -718,12 +796,142 @@
       + '<span class="meta">' + md(rg[0]) + ' ~ ' + md(rg[1]) + (W ? '' : ' · 1·2학년 시간표가 아직 없어요') + '</span>'
       + '<span class="actions no-print"><input id="hl" type="text" placeholder="이름 강조" style="width:130px;font-size:14px;padding:7px 10px">'
       + '<button id="xlsxBtn">📥 엑셀로 받기</button></span></div>'
-      + (weeks.length ? html : '<p class="msg">선택한 기간에 평일이 없어요.</p>') + '</div>';
+      + '<div class="legend" style="margin-top:6px"><span>수업 칸을 누르면 그 선생님 시간표와 바꿀 수 있는 시간이 나와요.</span>'
+      + '<span><i style="background:#ffe1b8"></i>교체한 수업</span><span><i style="background:#ffb4b4"></i>같은 시간 두 수업 (겹침)</span>'
+      + '<span><i style="background:#dcc8ff"></i>빈 수업 (아무도 없음)</span></div>'
+      + (weeks.length ? html : '<p class="msg">선택한 기간에 평일이 없어요.</p>')
+      + logHTML(rg) + '</div>';
     $('xlsxBtn').onclick = () => exportXlsx(weeks, rg);
     $('hl').oninput = e => {
       const q = e.target.value.trim();
       out.querySelectorAll('table.full td').forEach(td => td.classList.toggle('hl', !!q && td.textContent.includes(q) && !td.classList.contains('day')));
     };
+  }
+
+  // ---------- 수업 교체 ----------
+  function logHTML(rg) {
+    const list = LOG.map((e, i) => ({ e, i })).filter(({ e }) => e.cells.some(c => c.d >= rg[0] && c.d <= rg[1])).reverse();
+    if (!list.length) return '';
+    return '<h3 style="margin:24px 2px 8px;font-size:16px">🔁 교체 내역</h3><table class="cal">'
+      + list.map(({ e, i }) => '<tr><td style="width:90px" class="auto">' + fmtTime(e.at) + '</td><td>' + esc(e.desc) + '</td><td style="width:100px">'
+        + (adminPw ? '<button data-undo="' + i + '" style="font-size:13px;padding:5px 9px">되돌리기</button>' : '') + '</td></tr>').join('')
+      + '</table>';
+  }
+
+  // 칸 값 바꾸기 (원래 값과 같으면 교체 기록에서 지움)
+  function setSlot(d, k, val) {
+    const dc = dayCells(d), c = dc.cells[k];
+    const base = c && c.base;
+    const same = base ? base.s === val.s && base.t === val.t : !val.s && !val.t;
+    if (same) { if (CHG[d]) { delete CHG[d][k]; if (!Object.keys(CHG[d]).length) delete CHG[d]; } }
+    else (CHG[d] = CHG[d] || {})[k] = { s: val.s || '', t: val.t || '' };
+    invalidate();
+  }
+  async function applyOps(ops, desc) {
+    const entry = { at: new Date().toISOString(), desc, cells: [] };
+    ops.forEach(o => {
+      const k = o.p + '|' + o.col;
+      const before = CHG[o.d] && CHG[o.d][k] ? { ...CHG[o.d][k] } : null;
+      setSlot(o.d, k, o.val);
+      entry.cells.push({ d: o.d, k, before, after: CHG[o.d] && CHG[o.d][k] ? { ...CHG[o.d][k] } : null });
+    });
+    LOG.push(entry);
+    await persistChg();
+  }
+  async function undo(i) {
+    const e = LOG[i];
+    if (!e) return;
+    e.cells.slice().reverse().forEach(c => {
+      if (c.before) (CHG[c.d] = CHG[c.d] || {})[c.k] = c.before;
+      else if (CHG[c.d]) { delete CHG[c.d][c.k]; if (!Object.keys(CHG[c.d]).length) delete CHG[c.d]; }
+    });
+    LOG.splice(i, 1);
+    invalidate();
+    await persistChg();
+  }
+  async function persistChg() {
+    render();
+    if (!adminPw) return;
+    const st = $('swapStatus');
+    try { await save({ chg: { CHG, LOG } }); if (st) st.textContent = '✅ 저장했어요. 선생님들 개인시간표에도 반영돼요.'; }
+    catch (e) { alert('저장하지 못했어요: ' + e.message); }
+  }
+
+  // 칸을 누르면: 그 선생님의 그 주 시간표 + 같은 반에서 바꿀 수 있는 시간
+  let swapAt = null;
+  function openSwap(key) {
+    swapAt = key;
+    const [d, ps, ...rest] = key.split('|');
+    const p = +ps, col = rest.join('|');
+    const dc = dayCells(d);
+    const c1 = dc.cells[p + '|' + col] || { s: '', t: '' };
+    const A = names(c1.t);
+    const g12 = col.startsWith('a:');
+    const days = weekDays(d);
+    const maxP = Math.max(4, ...days.map(x => dayCells(x).maxP));
+    const label = colLabel(col);
+
+    let head = '<tr><th class="p"></th>' + days.map(x => '<th><div class="d">' + md(x) + ' (' + dowOf(x) + ')</div></th>').join('') + '</tr>';
+    let body = '';
+    for (let q = 1; q <= maxP; q++) {
+      body += '<tr><th class="p">' + q + '교시</th>';
+      days.forEach(x => {
+        const dx = dayCells(x);
+        let h = '';
+        // 이 선생님의 그 시간 수업
+        if (A.length) Object.values(dx.cells).filter(c => c.p === q && names(c.t).some(n => A.includes(n))).forEach(c => {
+          const me = x === d && q === p && c.col === col;
+          h += '<div class="cell ' + (me ? 'l sel' : c.g < 3 ? 'g12' : 'l') + (c.dup ? ' dup' : '') + '">' + esc(colLabel(c.col)) + (c.g < 3 && c.s ? '<small>' + esc(c.s) + '</small>' : '') + (me ? '<small>선택한 수업</small>' : '') + '</div>';
+        });
+        if (x === d && q === p && !A.length) h += '<div class="cell sel l">' + esc(label) + '<small>빈 칸 (선택)</small></div>';
+        // 같은 반의 그 시간과 맞바꾸기
+        if (!(x === d && q === p) && dx.valid(q, col)) {
+          const c2 = dx.cells[q + '|' + col] || { s: '', t: '' };
+          const B = names(c2.t);
+          const sameT = B.length && A.length && B.join() === A.join();
+          if (!sameT && (A.length || B.length)) {
+            const probA = A.filter(a => busyAt(a, x, q, col).length);
+            const probB = B.filter(b => busyAt(b, d, p, col).length);
+            const ok = !probA.length && !probB.length;
+            const why = [...probA.map(a => a + ' 선생님이 ' + slotName(x, q) + '에 수업 있음'), ...probB.map(b => b + ' 선생님이 ' + slotName(d, p) + '에 수업 있음')].join('\n');
+            const txt = B.length ? '↔ ' + B.join(', ') + (c2.s && g12 ? ' ' + c2.s : '') : (A.length ? '→ 빈 시간으로 옮기기' : '');
+            if (txt) h += '<button class="cand ' + (ok ? 'ok' : 'warn') + '" data-swap="' + x + '|' + q + '" title="' + esc(why) + '">'
+              + esc(txt) + '<small>' + (ok ? '교체 가능' : '겹침 · ' + esc(probA.concat(probB).join(', '))) + '</small></button>';
+          }
+        }
+        body += '<td>' + h + '</td>';
+      });
+      body += '</tr>';
+    }
+
+    const who = A.length ? A.join(', ') + ' 선생님' : '빈 칸';
+    $('swapBox').innerHTML =
+      '<div class="mhead"><div><h2>' + esc(who) + '</h2><div class="meta">' + slotName(d, p) + ' · ' + esc(label) + (c1.s && g12 ? ' · ' + esc(c1.s) : '') + '</div></div>'
+      + '<button id="swapClose">✕ 닫기</button></div>'
+      + '<p class="meta" style="margin:6px 0 10px">같은 반(' + esc(label) + ')의 다른 시간과 맞바꿔요. <b style="color:#1f6b3a">초록</b> = 두 선생님 모두 빈 시간이라 바로 교체 가능, '
+      + '<b style="color:#b45309">주황</b> = 누군가 겹치지만 넣을 수 있어요 (세 명이 바꾸는 경우 등 · 겹친 칸은 빨갛게 표시돼요).</p>'
+      + '<div class="tt-scroll"><table class="tt swap"><thead>' + head + '</thead><tbody>' + body + '</tbody></table></div>'
+      + '<div class="direct"><b>직접 넣기</b>'
+      + (g12 ? '<input id="dirS" type="text" placeholder="과목" value="' + esc(c1.s || '') + '" style="width:110px">' : '')
+      + '<input id="dirT" type="text" list="names" placeholder="선생님 이름" value="' + esc(c1.t || '') + '" style="width:160px">'
+      + '<button id="dirApply">넣기</button><button id="dirClear">비우기</button>'
+      + (c1.changed ? '<button id="dirReset">원래대로 (' + esc((c1.base && c1.base.t) || '빈 칸') + ')</button>' : '') + '</div>'
+      + '<p id="swapStatus" class="meta" style="margin:8px 0 0">' + (adminPw ? '' : '🔐 바꾸려면 아래 ‘담당자’로 들어와 주세요. 지금은 보기만 돼요.') + '</p>';
+    $('modal').hidden = false;
+    $('swapBox').querySelectorAll('button[data-swap], #dirApply, #dirClear, #dirReset').forEach(b => { b.disabled = !adminPw; });
+  }
+
+  async function doSwap(d, p, col, d2, p2) {
+    const c1 = dayCells(d).cells[p + '|' + col] || { s: '', t: '' };
+    const c2 = dayCells(d2).cells[p2 + '|' + col] || { s: '', t: '' };
+    const lbl = colLabel(col);
+    const desc = c2.t
+      ? lbl + ' ' + slotName(d, p) + ' ' + (c1.t || '빈 칸') + ' ↔ ' + slotName(d2, p2) + ' ' + c2.t
+      : lbl + ' ' + (c1.t || '빈 칸') + ' ' + slotName(d, p) + ' → ' + slotName(d2, p2);
+    await applyOps([
+      { d, p, col, val: { s: c2.s || '', t: c2.t || '' } },
+      { d: d2, p: p2, col, val: { s: c1.s || '', t: c1.t || '' } },
+    ], desc);
   }
 
   // 엑셀: 주마다 시트 하나 (화면과 같은 모양)
@@ -743,7 +951,7 @@
         const idx = M.cols.map((c, i) => c.g === g ? i : -1).filter(i => i >= 0);
         if (idx.length > 1) merges.push({ s: { r: 0, c: idx[0] }, e: { r: 0, c: idx[idx.length - 1] } });
       });
-      M.rows.forEach(row => aoa.push(row.map(c => c.t)));
+      M.rows.forEach(row => aoa.push(row.map(c => c.vac ? (c.t.split('\n')[0] ? c.t.split('\n')[0] + '\n' : '') + '(빈 수업)' : c.t)));
       M.merges.forEach(m => merges.push({ s: { r: m.r + 2, c: m.c }, e: { r: m.r + 1 + m.rs, c: m.c + m.cs - 1 } }));
       const ws = X.utils.aoa_to_sheet(aoa);
       ws['!merges'] = merges;
@@ -759,6 +967,7 @@
           alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
           border: { top: thin, left: thin, right: thin, bottom: end ? thick : thin },
           ...(r < 2 ? { fill: { patternType: 'solid', fgColor: { rgb: fill[M.cols[c].g] } } }
+            : body && (body.dup || body.vac || body.chg) ? { fill: { patternType: 'solid', fgColor: { rgb: body.dup ? 'FFB4B4' : body.vac ? 'DCC8FF' : 'FFE1B8' } } }
             : body && body.k === 'ev' ? { fill: { patternType: 'solid', fgColor: { rgb: 'EDEEF1' } } }
             : body && (body.k === 'day' || body.k === 'per') ? { fill: { patternType: 'solid', fgColor: { rgb: 'F6F7F9' } } } : {}),
         };
@@ -784,6 +993,43 @@
   ['dragenter', 'dragover'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add('over'); }));
   ['dragleave', 'drop'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove('over'); }));
   drop.addEventListener('drop', e => { const f = e.dataTransfer.files[0]; if (f) loadFile(f); });
+
+  // 수업 교체
+  $('result').addEventListener('click', e => {
+    const td = e.target.closest('td.slot');
+    if (td) return openSwap(td.dataset.key);
+    const u = e.target.closest('[data-undo]');
+    if (u && confirm('이 교체를 되돌릴까요?')) undo(+u.dataset.undo);
+  });
+  const closeSwap = () => { $('modal').hidden = true; swapAt = null; };
+  $('modal').addEventListener('click', async e => {
+    if (e.target === $('modal') || e.target.closest('#swapClose')) return closeSwap();
+    if (!swapAt || !adminPw) return;
+    const [d, ps, ...rest] = swapAt.split('|');
+    const p = +ps, col = rest.join('|');
+    const b = e.target.closest('button[data-swap]');
+    if (b) {
+      const [d2, p2] = b.dataset.swap.split('|');
+      closeSwap();
+      return doSwap(d, p, col, d2, +p2);
+    }
+    const c1 = dayCells(d).cells[p + '|' + col] || { s: '', t: '' };
+    const slot = colLabel(col) + ' ' + slotName(d, p);
+    if (e.target.closest('#dirApply')) {
+      const t = $('dirT').value.trim(), s = $('dirS') ? $('dirS').value.trim() : (c1.s || '');
+      closeSwap();
+      return applyOps([{ d, p, col, val: { s, t } }], slot + ' ' + (c1.t || '빈 칸') + ' → ' + (t || '빈 칸'));
+    }
+    if (e.target.closest('#dirClear')) {
+      closeSwap();
+      return applyOps([{ d, p, col, val: { s: c1.s || '', t: '' } }], slot + ' ' + (c1.t || '') + ' 비움');
+    }
+    if (e.target.closest('#dirReset')) {
+      closeSwap();
+      return applyOps([{ d, p, col, val: c1.base || { s: '', t: '' } }], slot + ' 원래대로 (' + ((c1.base && c1.base.t) || '빈 칸') + ')');
+    }
+  });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('modal').hidden) closeSwap(); });
 
   $('calTable').addEventListener('change', e => { const tr = e.target.closest('tr[data-d]'); if (tr) { readCalRow(tr); $('calStatus').textContent = '저장하지 않은 변경이 있어요.'; render(); } });
   $('calTable').addEventListener('click', e => {

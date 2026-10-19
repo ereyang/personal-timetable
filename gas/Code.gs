@@ -1,10 +1,10 @@
 // 3학년 개인시간표 앱 저장소 (GitHub Pages 앱에서 fetch로 사용)
-// GET  ?a=load            → 저장된 data(3학년)/g12(1·2학년)/cal(특별한 날) 전부 (누구나)
+// GET  ?a=load            → 저장된 data(3학년)/g12(1·2학년)/cal(특별한 날)/chg(수업 교체) 전부 (누구나)
 // POST {a:'setpw',pw}      → 담당자 암호가 없을 때만 처음 정하기
 // POST {a:'check',pw}      → 담당자 암호 확인
 // POST {a:'save',pw,set}   → set의 키들(data) 저장 (담당자만)
 // POST {a:'chpw',pw,newPw} → 암호 바꾸기
-var KEYS = ['data', 'g12', 'cal'];
+var KEYS = ['data', 'g12', 'cal', 'chg'];
 var CHUNK = 2500; // 속성 하나당 9KB 제한 → 한글 3바이트 고려해 2500자씩 나눠 저장
 
 function props() { return PropertiesService.getScriptProperties(); }
