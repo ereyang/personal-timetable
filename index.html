@@ -1,0 +1,434 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>3학년 개인시간표</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="parser.js"></script>
+<style>
+  :root {
+    --bg: #f5f6f8; --card: #fff; --ink: #1d2330; --muted: #6b7280; --line: #dde1e7;
+    --accent: #2f6fde; --accent-soft: #e8f0fd; --lesson: #eef4ff; --lesson-ink: #1e4fb3;
+    --study: #fff6dc; --study-ink: #8a6100; --event: #f1f2f4; --event-ink: #555c68;
+    --del: #b6bcc6; --warn: #c2410c; --warn-soft: #fff1e8;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font-family: "Pretendard", "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif; font-size: 16px; }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 20px 16px 60px; }
+  header h1 { font-size: 24px; margin: 4px 0 2px; }
+  header .sub { color: var(--muted); font-size: 14px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px; margin-top: 16px; }
+  .form { display: grid; grid-template-columns: 1.1fr 2fr; gap: 14px 18px; align-items: end; }
+  label.f { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; font-weight: 600; }
+  input[type=text], input[type=date] { width: 100%; font: inherit; font-size: 17px; padding: 10px 12px;
+    border: 1px solid var(--line); border-radius: 10px; background: #fff; color: var(--ink); }
+  input:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+  .form > div { min-width: 0; }
+  .range { display: flex; gap: 8px; align-items: center; }
+  .range input { flex: 1; min-width: 0; }
+  .range span { color: var(--muted); }
+  .quick { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; grid-column: 1 / -1; }
+  button { font: inherit; cursor: pointer; border-radius: 10px; border: 1px solid var(--line); background: #fff;
+    padding: 9px 14px; color: var(--ink); }
+  button:hover { border-color: var(--accent); color: var(--accent); }
+  button.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  button.primary:hover { color: #fff; filter: brightness(1.07); }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .chips button { padding: 5px 10px; font-size: 14px; border-radius: 999px; }
+  .msg { color: var(--muted); padding: 30px 10px; text-align: center; }
+  .msg.err { color: var(--warn); }
+
+  .summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; margin: 22px 2px 4px; }
+  .summary h2 { margin: 0; font-size: 22px; }
+  .summary .meta { color: var(--muted); }
+  .summary .actions { margin-left: auto; display: flex; gap: 8px; }
+
+  .week { margin-top: 18px; }
+  .week h3 { font-size: 15px; margin: 0 0 8px 2px; color: var(--muted); font-weight: 600; }
+  .week h3 b { color: var(--ink); }
+  .tt-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table.tt { width: 100%; border-collapse: separate; border-spacing: 0; table-layout: fixed; min-width: 560px;
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .tt th, .tt td { border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); text-align: center; padding: 0; }
+  .tt tr > *:last-child { border-right: 0; }
+  .tt tbody tr:last-child > * { border-bottom: 0; }
+  .tt thead th { background: #fafbfc; padding: 8px 4px; font-weight: 600; vertical-align: top; }
+  .tt thead th.today { background: var(--accent-soft); }
+  .tt thead .d { font-size: 15px; }
+  .tt thead .tag { display: inline-block; margin-top: 4px; font-size: 12px; font-weight: 600; padding: 2px 7px; border-radius: 6px; }
+  .tag.note { background: #eef0f3; color: #4b5260; }
+  .tag.ex { background: var(--warn-soft); color: var(--warn); }
+  .tt th.p { width: 64px; background: #fafbfc; font-weight: 600; color: var(--muted); font-size: 14px; }
+  .tt td, .tt tbody th { height: 58px; vertical-align: middle; }
+  .cell { margin: 5px; border-radius: 8px; padding: 6px 4px; font-weight: 700; font-size: 17px; line-height: 1.25; }
+  .cell small { display: block; font-weight: 500; font-size: 12px; opacity: .85; }
+  .cell.l { background: var(--lesson); color: var(--lesson-ink); }
+  .cell.s { background: var(--study); color: var(--study-ink); font-size: 15px; }
+  .cell.del { color: var(--del); font-weight: 500; font-size: 14px; text-decoration: line-through; }
+  .cell + .cell { margin-top: -2px; }
+  td.ev { background: var(--event); color: var(--event-ink); font-weight: 600; font-size: 15px; }
+  td.none { background: repeating-linear-gradient(135deg, #fafbfc 0 6px, #f1f3f5 6px 12px); }
+  td.nodata { color: var(--muted); font-size: 14px; background: #fafbfc; }
+  .notes { margin: 8px 2px 0; font-size: 13px; color: var(--muted); }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 13px; color: var(--muted); margin-top: 22px; }
+  .legend i { display: inline-block; width: 14px; height: 14px; border-radius: 4px; vertical-align: -2px; margin-right: 5px; }
+  footer { margin-top: 34px; font-size: 13px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  footer button { font-size: 13px; padding: 6px 10px; }
+  .drop { border: 2px dashed var(--line); border-radius: 14px; padding: 34px 16px; text-align: center; color: var(--muted); }
+  .drop.over { border-color: var(--accent); background: var(--accent-soft); }
+  .drop b { color: var(--ink); }
+
+  @media (max-width: 720px) {
+    .form { grid-template-columns: 1fr; }
+    .summary .actions { margin-left: 0; }
+    .tt th.p { width: 44px; font-size: 12px; }
+    .cell { font-size: 15px; margin: 3px; }
+  }
+  @media print {
+    @page { size: A4 landscape; margin: 10mm; }
+    body { background: #fff; font-size: 13px; }
+    .no-print, header .sub { display: none !important; }
+    .wrap { max-width: none; padding: 0; }
+    .card { border: 0; padding: 0; margin: 0; }
+    .week { break-inside: avoid; margin-top: 10px; }
+    table.tt { min-width: 0; }
+    .tt td, .tt tbody th { height: 42px; }
+    .cell { font-size: 14px; padding: 3px; margin: 3px; }
+    .tt th, .tt td, .cell, td.ev, td.none, .tag { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>3학년 개인시간표</h1>
+    <div class="sub" id="dataInfo">시간표를 불러오는 중…</div>
+  </header>
+
+  <section class="card no-print" id="loader" hidden>
+    <h2 style="margin:0 0 10px;font-size:18px">🔓 담당자 · 시간표 올리기</h2>
+    <div class="drop" id="drop">
+      <p><b>전체시간표 엑셀 파일</b>을 여기에 끌어다 놓거나</p>
+      <button class="primary" id="pickBtn">📂 파일 선택</button>
+      <p style="font-size:13px;margin-top:14px">첫 번째 시트(전체시간표)를 읽어요. 올리면 모든 선생님 화면이 새 시간표로 바뀌어요.</p>
+    </div>
+    <p id="adminStatus" style="margin:12px 2px 0;font-size:14px"></p>
+  </section>
+
+  <section class="card no-print" id="query" hidden>
+    <div class="form">
+      <div>
+        <label class="f" for="name">선생님 이름</label>
+        <input type="text" id="name" list="names" placeholder="예: 홍길동" autocomplete="off">
+        <datalist id="names"></datalist>
+      </div>
+      <div>
+        <label class="f">기간</label>
+        <div class="range">
+          <input type="date" id="from"><span>~</span><input type="date" id="to">
+        </div>
+      </div>
+      <div class="quick" id="quick">
+        <button data-q="this">이번 주</button>
+        <button data-q="next">다음 주</button>
+        <button data-q="2w">2주</button>
+        <button data-q="month">이번 달</button>
+        <button data-q="all">전체 기간</button>
+      </div>
+    </div>
+    <div class="chips" id="suggest"></div>
+  </section>
+
+  <section id="result"></section>
+
+  <footer class="no-print">
+    <span>3학년 수업만 표기 · 1, 2학년 시간표는 기존 시간표와 같아요.</span>
+    <button id="adminBtn">🔐 담당자</button>
+  </footer>
+  <input type="file" id="file" accept=".xlsx,.xlsm" hidden>
+</div>
+
+<script>
+(function () {
+  const KEY = 'tt3.data.v1', NAME_KEY = 'tt3.name';
+  const API = 'https://script.google.com/macros/s/AKfycbxL8XPTzzn_rlcEIN659a7f_sIgxiDayNbju3PUh2B7ORXurkiJpduyRwzLKjHY9mMe/exec';
+  const DOW = ['일', '월', '화', '수', '목', '금', '토'];
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const store = {
+    get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
+  };
+
+  let D = null;          // 파싱된 시간표
+  let byTeacher = {};    // 이름 → 수업 목록
+
+  // ---------- 날짜 도우미 ----------
+  const iso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  const parseIso = s => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
+  const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+  const monday = d => addDays(d, -((d.getDay() + 6) % 7));
+  const md = s => { const d = parseIso(s); return (d.getMonth() + 1) + '/' + d.getDate(); };
+  const today = iso(new Date());
+
+  // ---------- 데이터 ----------
+  function setData(data) {
+    D = data;
+    byTeacher = {};
+    D.lessons.forEach(l => (byTeacher[l.teacher] = byTeacher[l.teacher] || []).push(l));
+    $('names').innerHTML = D.teachers.map(t => '<option value="' + esc(t) + '">').join('');
+    $('dataInfo').textContent = D.title + ' · ' + md(D.from) + ' ~ ' + md(D.to) + ' · 선생님 ' + D.teachers.length + '명';
+    $('query').hidden = false;
+    if (!$('from').value) quick(today >= D.from && today <= D.to ? 'this' : 'all', true);
+    const saved = store.get(NAME_KEY);
+    if (saved && !$('name').value) $('name').value = saved;
+    render();
+  }
+
+  // ---------- 공유 저장소 (Apps Script) ----------
+  // 시간표는 gzip+base64로 줄여서 저장 (속성 저장 용량 제한)
+  async function pack(obj) {
+    const s = new Blob([JSON.stringify(obj)]).stream().pipeThrough(new CompressionStream('gzip'));
+    const buf = new Uint8Array(await new Response(s).arrayBuffer());
+    let bin = '';
+    for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+    return { z: btoa(bin) };
+  }
+  async function unpack(v) {
+    if (!v || !v.z) return v;
+    const bin = atob(v.z), buf = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+    const s = new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'));
+    return JSON.parse(await new Response(s).text());
+  }
+  const api = body => fetch(API, { method: 'POST', body: JSON.stringify(body) }).then(r => r.json());
+  let server = { hasPw: true, updated: '' };
+  let adminPw = null;
+  try { adminPw = sessionStorage.getItem('tt3.pw'); } catch (e) {}
+
+  const fmtTime = s => { const d = new Date(s); return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0'); };
+
+  function showAdmin() {
+    $('loader').hidden = !adminPw;
+    $('adminBtn').textContent = adminPw ? '🔓 담당자 모드 끝내기' : '🔐 담당자';
+    $('adminStatus').textContent = server.updated ? '마지막으로 올린 때: ' + fmtTime(server.updated) : '아직 올린 시간표가 없어요.';
+  }
+
+  async function adminToggle() {
+    if (adminPw) { adminPw = null; try { sessionStorage.removeItem('tt3.pw'); } catch (e) {} showAdmin(); return; }
+    if (!server.hasPw) {
+      const pw = prompt('처음이라 담당자 암호를 정해 주세요. (4자 이상)\n이 암호가 있어야 시간표 파일을 올릴 수 있어요.');
+      if (!pw) return;
+      const r = await api({ a: 'setpw', pw });
+      if (!r.ok) return alert(r.msg);
+      server.hasPw = true; adminPw = pw;
+    } else {
+      const pw = prompt('담당자 암호');
+      if (!pw) return;
+      const r = await api({ a: 'check', pw });
+      if (!r.ok) return alert(r.msg);
+      adminPw = pw;
+    }
+    try { sessionStorage.setItem('tt3.pw', adminPw); } catch (e) {}
+    showAdmin();
+  }
+
+  async function loadFile(file) {
+    if (!adminPw) return;
+    $('adminStatus').textContent = '파일 읽는 중…';
+    try {
+      const buf = await file.arrayBuffer();
+      const data = TTParser.parse(buf);
+      if (!data.dates.length || !data.teachers.length) throw new Error('시간표 형식을 찾지 못했어요.');
+      data.fileName = file.name;
+      setData(data);
+      $('adminStatus').textContent = '선생님들 화면에 올리는 중…';
+      const r = await api({ a: 'save', pw: adminPw, set: { data: await pack(data) } });
+      if (!r.ok) throw new Error(r.msg);
+      server.updated = r.updated;
+      store.set(KEY, JSON.stringify(data));
+      store.set(KEY + '.updated', r.updated);
+      showAdmin();
+      $('adminStatus').textContent = '✅ 올렸어요! (' + file.name + ' · 선생님 ' + data.teachers.length + '명 · ' + md(data.from) + '~' + md(data.to) + ') 이제 모든 선생님 화면에 이 시간표가 보여요.';
+    } catch (e) {
+      console.error(e);
+      $('adminStatus').textContent = '⚠️ 올리지 못했어요: ' + e.message;
+    }
+  }
+
+  async function init() {
+    // 이 기기에 저장해 둔 사본을 먼저 보여 주고, 저장소에서 최신본을 받아 바꿈
+    const s = store.get(KEY);
+    if (s) { try { setData(JSON.parse(s)); } catch (e) {} }
+    try {
+      const r = await fetch(API + '?a=load&t=' + Date.now()).then(r => r.json());
+      server = { hasPw: r.hasPw, updated: r.updated };
+      if (r.data && r.updated !== store.get(KEY + '.updated')) {
+        const data = await unpack(r.data);
+        store.set(KEY, JSON.stringify(data));
+        store.set(KEY + '.updated', r.updated);
+        setData(data);
+      } else if (!r.data) {
+        $('dataInfo').textContent = '아직 시간표가 올라오지 않았어요. 담당자가 올리면 볼 수 있어요.';
+      }
+    } catch (e) {
+      console.error(e);
+      if (!D) $('dataInfo').textContent = '시간표를 불러오지 못했어요. 인터넷 연결을 확인하고 새로고침해 주세요.';
+    }
+    showAdmin();
+  }
+
+  // ---------- 기간 빠른 선택 ----------
+  function quick(q, silent) {
+    const t = parseIso(today);
+    let a, b;
+    if (q === 'this') { a = monday(t); b = addDays(a, 4); }
+    else if (q === 'next') { a = addDays(monday(t), 7); b = addDays(a, 4); }
+    else if (q === '2w') { a = monday(t); b = addDays(a, 11); }
+    else if (q === 'month') { a = new Date(t.getFullYear(), t.getMonth(), 1); b = new Date(t.getFullYear(), t.getMonth() + 1, 0); }
+    else { a = parseIso(D.from); b = parseIso(D.to); }
+    $('from').value = iso(a); $('to').value = iso(b);
+    document.querySelectorAll('#quick button').forEach(x => x.classList.toggle('on', x.dataset.q === q));
+    if (!silent) render();
+  }
+
+  // ---------- 이름 찾기 ----------
+  function findTeacher(raw) {
+    const n = raw.replace(/\s|선생님|쌤|교사/g, '');
+    if (!n) return { name: null, cands: [] };
+    if (byTeacher[n]) return { name: n, cands: [] };
+    const cands = D.teachers.filter(t => t.includes(n) || n.includes(t));
+    return { name: cands.length === 1 ? cands[0] : null, cands };
+  }
+
+  // ---------- 화면 ----------
+  function render() {
+    const out = $('result');
+    if (!D) return;
+    const raw = $('name').value.trim();
+    const { name, cands } = findTeacher(raw);
+    $('suggest').innerHTML = !name && cands.length > 1
+      ? cands.map(c => '<button data-n="' + esc(c) + '">' + esc(c) + '</button>').join('') : '';
+    if (!raw) { out.innerHTML = '<p class="msg">선생님 이름을 입력하세요.</p>'; return; }
+    if (!name) {
+      out.innerHTML = '<p class="msg">' + (cands.length > 1 ? '위에서 선생님을 골라 주세요.'
+        : '‘' + esc(raw) + '’ 선생님은 3학년 시간표에 없어요. 이름을 다시 확인해 주세요.') + '</p>';
+      return;
+    }
+    store.set(NAME_KEY, name);
+    let from = $('from').value, to = $('to').value;
+    if (!from || !to) { out.innerHTML = '<p class="msg">기간을 선택하세요.</p>'; return; }
+    if (from > to) [from, to] = [to, from];
+
+    const mine = {};   // date → p → [lesson]
+    byTeacher[name].forEach(l => {
+      if (l.date < from || l.date > to) return;
+      ((mine[l.date] = mine[l.date] || {})[l.p] = mine[l.date][l.p] || []).push(l);
+    });
+
+    // 주 단위로 나누기 (평일만)
+    const weeks = [];
+    for (let w = monday(parseIso(from)); iso(w) <= to; w = addDays(w, 7)) {
+      const days = [];
+      for (let i = 0; i < 5; i++) {
+        const s = iso(addDays(w, i));
+        if (s >= from && s <= to) days.push(s);
+      }
+      if (days.length) weeks.push({ mon: iso(w), days });
+    }
+
+    let total = 0, html = '';
+    weeks.forEach(wk => {
+      const maxP = Math.max(4, ...wk.days.map(d => (D.dayInfo[d] || {}).maxP || 0), 6);
+      let head = '<tr><th class="p"></th>';
+      const notes = [];
+      wk.days.forEach(d => {
+        const info = D.dayInfo[d];
+        const rn = (D.rangeNotes || []).find(r => d >= r.from && d <= r.to);
+        let tags = '';
+        if (info && info.note) tags += '<div><span class="tag note">' + esc(info.note) + '</span></div>';
+        if (info && info.excluded.includes(name)) tags += '<div><span class="tag ex">당일수업제외명단</span></div>';
+        if (!info && rn) tags += '<div><span class="tag note">' + esc(rn.text) + '</span></div>';
+        if (info) info.notes.forEach(n => notes.push(md(d) + ' ' + n));
+        head += '<th class="' + (d === today ? 'today' : '') + '"><div class="d">' + md(d) + ' (' + DOW[parseIso(d).getDay()] + ')</div>' + tags + '</th>';
+      });
+      head += '</tr>';
+
+      let body = '', weekCount = 0;
+      const skip = {};   // 행사 칸 rowspan 처리
+      for (let p = 1; p <= maxP; p++) {
+        body += '<tr><th class="p">' + p + '교시</th>';
+        wk.days.forEach(d => {
+          if (skip[d + '|' + p]) return;
+          const info = D.dayInfo[d];
+          if (!info) {
+            if (p === 1) {
+              const rn = (D.rangeNotes || []).find(r => d >= r.from && d <= r.to);
+              body += '<td class="nodata" rowspan="' + maxP + '">' + (rn ? esc(rn.text) : '시간표 없음') + '</td>';
+            }
+            return;
+          }
+          const ev = info.events.find(e => e.periods[0] === p);
+          if (ev) {
+            const ps = ev.periods.filter(x => x <= maxP);
+            const span = Math.max(...ps) - p + 1;
+            for (let k = 1; k < span; k++) skip[d + '|' + (p + k)] = 1;
+            body += '<td class="ev" rowspan="' + span + '">' + esc(ev.text) + '</td>';
+            return;
+          }
+          if (info.events.some(e => e.periods.includes(p))) return;
+          const ls = (mine[d] || {})[p] || [];
+          if (!ls.length && p > info.maxP) { body += '<td class="none"></td>'; return; }
+          body += '<td>' + ls.map(l => {
+            if (l.deleted) return '<div class="cell del">' + esc(l.place) + '<small>삭제</small></div>';
+            weekCount++;
+            const study = /도서관|자습/.test(l.place);
+            return '<div class="cell ' + (study ? 's' : 'l') + '">' + esc(study ? '도서관 자습감독' : l.place)
+              + (l.sub ? '<small>' + esc(l.sub) + '</small>' : '') + '</div>';
+          }).join('') + '</td>';
+        });
+        body += '</tr>';
+      }
+      total += weekCount;
+      const last = wk.days[wk.days.length - 1];
+      html += '<div class="week"><h3><b>' + md(wk.days[0]) + ' ~ ' + md(last) + '</b> · 수업 ' + weekCount + '시간</h3>'
+        + '<div class="tt-scroll"><table class="tt"><thead>' + head + '</thead><tbody>' + body + '</tbody></table></div>'
+        + (notes.length ? '<div class="notes">※ ' + notes.map(esc).join(' · ') + '</div>' : '') + '</div>';
+    });
+
+    const range = md(from) + '(' + DOW[parseIso(from).getDay()] + ') ~ ' + md(to) + '(' + DOW[parseIso(to).getDay()] + ')';
+    out.innerHTML = '<div class="card">'
+      + '<div class="summary"><h2>' + esc(name) + ' 선생님</h2><span class="meta">' + range + ' · 3학년 수업 ' + total + '시간</span>'
+      + '<span class="actions no-print"><button id="printBtn">🖨️ 인쇄</button></span></div>'
+      + (weeks.length ? html : '<p class="msg">선택한 기간에 평일이 없어요.</p>')
+      + '<div class="legend"><span><i style="background:var(--lesson)"></i>수업 (반)</span>'
+      + '<span><i style="background:var(--study)"></i>도서관 자습감독</span>'
+      + '<span><i style="background:var(--event)"></i>학교 행사</span>'
+      + '<span><s style="color:var(--del)">3반</s> 삭제된 수업</span>'
+      + '<span><i style="background:repeating-linear-gradient(135deg,#fafbfc 0 3px,#e5e8ec 3px 6px)"></i>수업 없는 교시</span></div>'
+      + '</div>';
+    $('printBtn').onclick = () => window.print();
+  }
+
+  // ---------- 이벤트 ----------
+  $('name').addEventListener('input', render);
+  $('from').addEventListener('change', () => { document.querySelectorAll('#quick button').forEach(x => x.classList.remove('on')); render(); });
+  $('to').addEventListener('change', () => { document.querySelectorAll('#quick button').forEach(x => x.classList.remove('on')); render(); });
+  $('quick').addEventListener('click', e => { const b = e.target.closest('button'); if (b) quick(b.dataset.q); });
+  $('suggest').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { $('name').value = b.dataset.n; render(); } });
+  $('pickBtn').onclick = () => $('file').click();
+  $('adminBtn').onclick = adminToggle;
+  $('file').addEventListener('change', e => { const f = e.target.files[0]; if (f) loadFile(f); e.target.value = ''; });
+  const drop = $('drop');
+  ['dragenter', 'dragover'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add('over'); }));
+  ['dragleave', 'drop'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove('over'); }));
+  drop.addEventListener('drop', e => { const f = e.dataTransfer.files[0]; if (f) loadFile(f); });
+
+  init();
+})();
+</script>
+</body>
+</html>
