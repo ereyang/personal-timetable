@@ -149,17 +149,34 @@
     .cell { font-size: 15px; margin: 3px; }
   }
   @media print {
-    @page { size: A4 landscape; margin: 10mm; }
-    body { background: #fff; font-size: 13px; }
-    .no-print, header .sub { display: none !important; }
+    /* A4 세로 · 한 줄에 1주 · 한 장에 4주 */
+    @page { size: A4 portrait; margin: 8mm; }
+    body { background: #fff; font-size: 9pt; }
+    .no-print, header, .legend { display: none !important; }
+    .notes { font-size: 6.5pt; margin: 0.5mm 0 0; }
     .wrap { max-width: none; padding: 0; }
     .card { border: 0; padding: 0; margin: 0; }
-    .week { break-inside: avoid; margin-top: 10px; }
-    table.tt { min-width: 0; }
-    .tt td, .tt tbody th { height: 38px; }
-    .cell { font-size: 13px; padding: 2px; margin: 2px; }
+    .summary { margin: 0 0 2mm; }
+    .summary h2 { font-size: 13pt; }
+    .summary .meta { font-size: 9pt; }
+    .week { break-inside: avoid; margin-top: 2.5mm; }
+    .week.pb { break-after: page; }
+    .week h3 { font-size: 8.5pt; margin: 0 0 1mm; }
+    .tt-scroll { overflow: visible; }
+    table.tt { min-width: 0; border-radius: 4px; }
+    .tt thead th { padding: 0.6mm 0.5mm; }
+    .tt thead .d { font-size: 8pt; }
+    .tag { font-size: 6pt; padding: 0 1mm; margin-top: 0.3mm; }
+    .tt th.p { width: 11mm; font-size: 7pt; }
+    .tt td, .tt tbody th { height: 6.4mm; }
+    .cell { font-size: 8pt; padding: 0.3mm; margin: 0.4mm; border-radius: 3px; line-height: 1.1; }
+    .cell small { font-size: 6pt; }
+    .cell.del, .cell.s { font-size: 7.5pt; }
+    .cell + .cell { margin-top: 0; }
+    td.ev { font-size: 8pt; }
     .tt th, .tt td, .cell, td.ev, td.none, .tag, .full th, .full td { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   }
+
 </style>
 </head>
 <body>
@@ -590,7 +607,7 @@
 
     const weeks = weeksOf(from, to);
     let total = 0, html = '';
-    weeks.forEach(days => {
+    weeks.forEach((days, wi) => {
       const plans = {}, d3s = {}, dmax = {}, dcs = {};
       days.forEach(d => {
         const dc = dcs[d] = dayCells(d);
@@ -660,7 +677,7 @@
         body += '</tr>';
       }
       total += weekCount;
-      html += '<div class="week"><h3><b>' + md(days[0]) + ' ~ ' + md(days[days.length - 1]) + '</b> · 수업 ' + weekCount + '시간</h3>'
+      html += '<div class="week' + (wi % 4 === 3 && wi < weeks.length - 1 ? ' pb' : '') + '"><h3><b>' + md(days[0]) + ' ~ ' + md(days[days.length - 1]) + '</b> · 수업 ' + weekCount + '시간</h3>'
         + '<div class="tt-scroll"><table class="tt"><thead>' + head + '</thead><tbody>' + body + '</tbody></table></div>'
         + (notes.length ? '<div class="notes">※ ' + notes.map(esc).join(' · ') + '</div>' : '') + '</div>';
     });
