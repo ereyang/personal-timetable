@@ -3,13 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>3학년 개인시간표</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<title>개인시간표</title>
+<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
 <script src="parser.js"></script>
 <style>
   :root {
     --bg: #f5f6f8; --card: #fff; --ink: #1d2330; --muted: #6b7280; --line: #dde1e7;
     --accent: #2f6fde; --accent-soft: #e8f0fd; --lesson: #eef4ff; --lesson-ink: #1e4fb3;
+    --g12: #edf8f0; --g12-ink: #1f6b3a;
     --study: #fff6dc; --study-ink: #8a6100; --event: #f1f2f4; --event-ink: #555c68;
     --del: #b6bcc6; --warn: #c2410c; --warn-soft: #fff1e8;
   }
@@ -17,16 +18,21 @@
   body { margin: 0; background: var(--bg); color: var(--ink);
     font-family: "Pretendard", "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif; font-size: 16px; }
   .wrap { max-width: 1100px; margin: 0 auto; padding: 20px 16px 60px; }
+  .wrap.wide { max-width: none; }
   header h1 { font-size: 24px; margin: 4px 0 2px; }
   header .sub { color: var(--muted); font-size: 14px; }
+  .tabs { display: flex; gap: 6px; margin-top: 14px; }
+  .tabs button { border-radius: 10px 10px 0 0; border-bottom: 0; padding: 9px 16px; }
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px; margin-top: 16px; }
+  .tabs + .card { margin-top: 0; border-top-left-radius: 0; }
   .form { display: grid; grid-template-columns: 1.1fr 2fr; gap: 14px 18px; align-items: end; }
+  .form.nonames { grid-template-columns: 1fr; }
   label.f { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; font-weight: 600; }
-  input[type=text], input[type=date] { width: 100%; font: inherit; font-size: 17px; padding: 10px 12px;
+  input[type=text], input[type=date], select { width: 100%; font: inherit; font-size: 17px; padding: 10px 12px;
     border: 1px solid var(--line); border-radius: 10px; background: #fff; color: var(--ink); }
-  input:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+  input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
   .form > div { min-width: 0; }
-  .range { display: flex; gap: 8px; align-items: center; }
+  .range { display: flex; gap: 8px; align-items: center; max-width: 560px; }
   .range input { flex: 1; min-width: 0; }
   .range span { color: var(--muted); }
   .quick { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; grid-column: 1 / -1; }
@@ -58,7 +64,7 @@
   .tt thead th { background: #fafbfc; padding: 8px 4px; font-weight: 600; vertical-align: top; }
   .tt thead th.today { background: var(--accent-soft); }
   .tt thead .d { font-size: 15px; }
-  .tt thead .tag { display: inline-block; margin-top: 4px; font-size: 12px; font-weight: 600; padding: 2px 7px; border-radius: 6px; }
+  .tag { display: inline-block; margin-top: 4px; font-size: 12px; font-weight: 600; padding: 2px 7px; border-radius: 6px; }
   .tag.note { background: #eef0f3; color: #4b5260; }
   .tag.ex { background: var(--warn-soft); color: var(--warn); }
   .tt th.p { width: 64px; background: #fafbfc; font-weight: 600; color: var(--muted); font-size: 14px; }
@@ -66,6 +72,7 @@
   .cell { margin: 5px; border-radius: 8px; padding: 6px 4px; font-weight: 700; font-size: 17px; line-height: 1.25; }
   .cell small { display: block; font-weight: 500; font-size: 12px; opacity: .85; }
   .cell.l { background: var(--lesson); color: var(--lesson-ink); }
+  .cell.g12 { background: var(--g12); color: var(--g12-ink); }
   .cell.s { background: var(--study); color: var(--study-ink); font-size: 15px; }
   .cell.del { color: var(--del); font-weight: 500; font-size: 14px; text-decoration: line-through; }
   .cell + .cell { margin-top: -2px; }
@@ -75,14 +82,36 @@
   .notes { margin: 8px 2px 0; font-size: 13px; color: var(--muted); }
   .legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 13px; color: var(--muted); margin-top: 22px; }
   .legend i { display: inline-block; width: 14px; height: 14px; border-radius: 4px; vertical-align: -2px; margin-right: 5px; }
+
+  /* 1~3학년 전체시간표 */
+  table.full { border-collapse: collapse; font-size: 12px; background: #fff; }
+  .full th, .full td { border: 1px solid #c9ced6; padding: 2px 3px; text-align: center; min-width: 54px; line-height: 1.25; }
+  .full thead th { background: #eef1f5; position: sticky; top: 0; }
+  .full th.g1 { background: #e3f0ff; } .full th.g2 { background: #e5f6ea; } .full th.g3 { background: #fdf0dd; }
+  .full td.day { background: #f6f7f9; font-weight: 700; min-width: 70px; }
+  .full td.per { background: #f6f7f9; color: var(--muted); min-width: 34px; }
+  .full td .s { font-weight: 600; }
+  .full td .t { color: #4b5260; }
+  .full td.ev { font-size: 14px; }
+  .full tr.dayend td { border-bottom: 2px solid #8a93a1; }
+  .full td.hl { background: #fff3a8; }
+
   footer { margin-top: 34px; font-size: 13px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
   footer button { font-size: 13px; padding: 6px 10px; }
-  .drop { border: 2px dashed var(--line); border-radius: 14px; padding: 34px 16px; text-align: center; color: var(--muted); }
+  .drop { border: 2px dashed var(--line); border-radius: 14px; padding: 26px 16px; text-align: center; color: var(--muted); }
   .drop.over { border-color: var(--accent); background: var(--accent-soft); }
   .drop b { color: var(--ink); }
+  .files { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; font-size: 14px; }
+  .files div { background: #fafbfc; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+  .files b { display: block; margin-bottom: 2px; }
+  table.cal { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 14px; }
+  .cal th, .cal td { border-bottom: 1px solid var(--line); padding: 6px; text-align: left; vertical-align: middle; }
+  .cal select, .cal input { font-size: 14px; padding: 6px 8px; }
+  .cal .auto { color: var(--muted); font-size: 12px; }
 
   @media (max-width: 720px) {
     .form { grid-template-columns: 1fr; }
+    .files { grid-template-columns: 1fr; }
     .summary .actions { margin-left: 0; }
     .tt th.p { width: 44px; font-size: 12px; }
     .cell { font-size: 15px; margin: 3px; }
@@ -95,32 +124,49 @@
     .card { border: 0; padding: 0; margin: 0; }
     .week { break-inside: avoid; margin-top: 10px; }
     table.tt { min-width: 0; }
-    .tt td, .tt tbody th { height: 42px; }
-    .cell { font-size: 14px; padding: 3px; margin: 3px; }
-    .tt th, .tt td, .cell, td.ev, td.none, .tag { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .tt td, .tt tbody th { height: 38px; }
+    .cell { font-size: 13px; padding: 2px; margin: 2px; }
+    .tt th, .tt td, .cell, td.ev, td.none, .tag, .full th, .full td { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   }
 </style>
 </head>
 <body>
-<div class="wrap">
+<div class="wrap" id="wrap">
   <header>
-    <h1>3학년 개인시간표</h1>
+    <h1>개인시간표</h1>
     <div class="sub" id="dataInfo">시간표를 불러오는 중…</div>
   </header>
 
   <section class="card no-print" id="loader" hidden>
     <h2 style="margin:0 0 10px;font-size:18px">🔓 담당자 · 시간표 올리기</h2>
     <div class="drop" id="drop">
-      <p><b>전체시간표 엑셀 파일</b>을 여기에 끌어다 놓거나</p>
+      <p><b>엑셀 파일</b>을 여기에 끌어다 놓거나</p>
       <button class="primary" id="pickBtn">📂 파일 선택</button>
-      <p style="font-size:13px;margin-top:14px">첫 번째 시트(전체시간표)를 읽어요. 올리면 모든 선생님 화면이 새 시간표로 바뀌어요.</p>
+      <p style="font-size:13px;margin-top:12px">두 종류 모두 여기서 올려요. 어떤 파일인지 앱이 알아서 구분해요.<br>
+        ① <b>3학년 날짜별 시간표</b> (예: 10.12 이후 3학년 시간표) — 3학년은 이 파일로 적용<br>
+        ② <b>요일별 전체시간표</b> (1·2·3학년이 다 들어간 파일) — 여기서 <b>1·2학년만</b> 뽑아 써요</p>
     </div>
+    <div class="files" id="fileState"></div>
     <p id="adminStatus" style="margin:12px 2px 0;font-size:14px"></p>
+
+    <h3 style="margin:22px 0 4px;font-size:16px">📅 1·2학년 특별한 날</h3>
+    <p style="margin:0;font-size:13px;color:var(--muted)">3학년 시간표의 날짜 메모(금요일수업, 1,2학년 현장체험, 휴업일 등)를 보고 자동으로 정했어요. 다르면 바꾸고 저장하세요.</p>
+    <table class="cal" id="calTable"></table>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center">
+      <input type="date" id="calAddDate" style="width:auto">
+      <button id="calAdd">+ 날짜 추가</button>
+      <button class="primary" id="calSave">💾 특별한 날 저장</button>
+      <span id="calStatus" style="font-size:13px;color:var(--muted)"></span>
+    </div>
   </section>
 
+  <div class="tabs no-print" id="tabs" hidden>
+    <button data-v="me" class="on">👤 개인시간표</button>
+    <button data-v="all">🗓️ 1~3학년 전체시간표</button>
+  </div>
   <section class="card no-print" id="query" hidden>
-    <div class="form">
-      <div>
+    <div class="form" id="form">
+      <div id="nameBox">
         <label class="f" for="name">선생님 이름</label>
         <input type="text" id="name" list="names" placeholder="예: 홍길동" autocomplete="off">
         <datalist id="names"></datalist>
@@ -145,7 +191,7 @@
   <section id="result"></section>
 
   <footer class="no-print">
-    <span>3학년 수업만 표기 · 1, 2학년 시간표는 기존 시간표와 같아요.</span>
+    <span id="footNote"></span>
     <button id="adminBtn">🔐 담당자</button>
   </footer>
   <input type="file" id="file" accept=".xlsx,.xlsm" hidden>
@@ -153,7 +199,7 @@
 
 <script>
 (function () {
-  const KEY = 'tt3.data.v1', NAME_KEY = 'tt3.name';
+  const KEY = 'tt3.data.v1', NAME_KEY = 'tt3.name', VIEW_KEY = 'tt3.view';
   const API = 'https://script.google.com/macros/s/AKfycbxL8XPTzzn_rlcEIN659a7f_sIgxiDayNbju3PUh2B7ORXurkiJpduyRwzLKjHY9mMe/exec';
   const DOW = ['일', '월', '화', '수', '목', '금', '토'];
   const $ = id => document.getElementById(id);
@@ -162,9 +208,13 @@
     get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
     set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
   };
+  const names = s => String(s || '').split(/[,\n\/·]+/).map(x => x.trim()).filter(Boolean);
 
-  let D = null;          // 파싱된 시간표
-  let byTeacher = {};    // 이름 → 수업 목록
+  let D = null;          // 3학년 날짜별 시간표
+  let W = null;          // 요일별 전체시간표에서 뽑은 1·2학년
+  let CAL = {};          // 날짜별 1·2학년 운영 (담당자가 바꾼 것)
+  let by3 = {}, by12 = {};
+  let view = store.get(VIEW_KEY) === 'all' ? 'all' : 'me';
 
   // ---------- 날짜 도우미 ----------
   const iso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
@@ -172,24 +222,67 @@
   const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
   const monday = d => addDays(d, -((d.getDay() + 6) % 7));
   const md = s => { const d = parseIso(s); return (d.getMonth() + 1) + '/' + d.getDate(); };
+  const dowOf = s => DOW[parseIso(s).getDay()];
   const today = iso(new Date());
 
-  // ---------- 데이터 ----------
-  function setData(data) {
-    D = data;
-    byTeacher = {};
-    D.lessons.forEach(l => (byTeacher[l.teacher] = byTeacher[l.teacher] || []).push(l));
-    $('names').innerHTML = D.teachers.map(t => '<option value="' + esc(t) + '">').join('');
-    $('dataInfo').textContent = D.title + ' · ' + md(D.from) + ' ~ ' + md(D.to) + ' · 선생님 ' + D.teachers.length + '명';
-    $('query').hidden = false;
-    if (!$('from').value) quick(today >= D.from && today <= D.to ? 'this' : 'all', true);
-    const saved = store.get(NAME_KEY);
-    if (saved && !$('name').value) $('name').value = saved;
-    render();
+  // ---------- 1·2학년: 그날 어떤 요일 시간표로 도는지 ----------
+  // 반환: {mode:'normal'|'dow'|'off', dow, label, auto}
+  function autoPlan(d) {
+    const info = D && D.dayInfo[d];
+    const note = info ? info.note : '';
+    const m = note.match(/([월화수목금])요일\s*수업/);
+    if (m) return { mode: 'dow', dow: m[1], label: note };
+    if (/1\s*[,·.]\s*2\s*학년/.test(note)) return { mode: 'off', label: note };
+    if (info) {
+      const whole = info.events.find(e => e.periods[0] === 1 && e.periods.length >= Math.min(4, info.maxP));
+      if (whole && !/^3\s*학년|진로체험|장행식/.test(whole.text) && /휴업|성탄|신정|수능|공휴|휴일|종업|방학|학력평가|개교기념/.test(whole.text))
+        return { mode: 'off', label: whole.text };
+    }
+    return { mode: 'normal' };
+  }
+  function plan12(d) {
+    const a = autoPlan(d);
+    const o = CAL[d];
+    return o ? { ...o, auto: false } : { ...a, auto: true };
+  }
+  const dow12 = (d, p) => p.mode === 'dow' ? p.dow : dowOf(d);
+
+  // 3학년 칸 이름: "2반" → "3-2"
+  const place3 = pl => /^(\d+)반$/.test(pl) ? '3-' + pl.replace('반', '') : pl;
+  function places3() {
+    if (!D) return [];
+    const seen = [];
+    D.lessons.forEach(l => { if (!seen.includes(l.place)) seen.push(l.place); });
+    const cls = seen.filter(p => /^\d+반$/.test(p)).sort((a, b) => parseInt(a) - parseInt(b));
+    return cls.concat(seen.filter(p => !/^\d+반$/.test(p)));
   }
 
+  // ---------- 데이터 ----------
+  function refresh() {
+    by3 = {}; by12 = {};
+    if (D) D.lessons.forEach(l => (by3[l.teacher] = by3[l.teacher] || []).push(l));
+    if (W) W.lessons.forEach(l => names(l.teacher).forEach(t => (by12[t] = by12[t] || []).push(l)));
+    const all = [...new Set([...(D ? D.teachers : []), ...(W ? W.teachers : [])])].sort((a, b) => a.localeCompare(b, 'ko'));
+    $('names').innerHTML = all.map(t => '<option value="' + esc(t) + '">').join('');
+    const parts = [];
+    if (D) parts.push('3학년 ' + md(D.from) + '~' + md(D.to));
+    if (W) parts.push('1·2학년 요일별 시간표');
+    $('dataInfo').textContent = parts.length ? parts.join(' + ') + ' · 선생님 ' + all.length + '명' : '아직 시간표가 올라오지 않았어요. 담당자가 올리면 볼 수 있어요.';
+    $('footNote').textContent = W ? '1·2학년은 요일별 시간표, 3학년은 날짜별 시간표로 보여 줘요.' : '3학년 수업만 표기 · 1, 2학년 시간표는 기존 시간표와 같아요.';
+    $('query').hidden = $('tabs').hidden = !(D || W);
+    if (!D && !W) $('result').innerHTML = '';
+    if ((D || W) && !$('from').value) {
+      const inRange = !D || (today >= D.from && today <= D.to);
+      quick(inRange ? 'this' : 'all', true);
+    }
+    const saved = store.get(NAME_KEY);
+    if (saved && !$('name').value) $('name').value = saved;
+    setView(view, true);
+    renderCal();
+  }
+  function allTeachers() { return [...new Set([...Object.keys(by3), ...Object.keys(by12)])]; }
+
   // ---------- 공유 저장소 (Apps Script) ----------
-  // 시간표는 gzip+base64로 줄여서 저장 (속성 저장 용량 제한)
   async function pack(obj) {
     const s = new Blob([JSON.stringify(obj)]).stream().pipeThrough(new CompressionStream('gzip'));
     const buf = new Uint8Array(await new Response(s).arrayBuffer());
@@ -210,11 +303,19 @@
   try { adminPw = sessionStorage.getItem('tt3.pw'); } catch (e) {}
 
   const fmtTime = s => { const d = new Date(s); return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0'); };
+  function cacheSave(updated) {
+    store.set(KEY, JSON.stringify({ data: D, g12: W, cal: CAL }));
+    store.set(KEY + '.updated', updated || '');
+  }
 
   function showAdmin() {
     $('loader').hidden = !adminPw;
     $('adminBtn').textContent = adminPw ? '🔓 담당자 모드 끝내기' : '🔐 담당자';
-    $('adminStatus').textContent = server.updated ? '마지막으로 올린 때: ' + fmtTime(server.updated) : '아직 올린 시간표가 없어요.';
+    $('fileState').innerHTML =
+      '<div><b>① 3학년 날짜별 시간표</b>' + (D ? esc(D.fileName || D.title) + '<br>' + md(D.from) + ' ~ ' + md(D.to) + ' · 선생님 ' + D.teachers.length + '명' : '아직 없음') + '</div>'
+      + '<div><b>② 1·2학년 (요일별 전체시간표)</b>' + (W ? esc(W.fileName || W.title) + '<br>' + W.cols.length + '칸 · 선생님 ' + W.teachers.length + '명' : '아직 없음') + '</div>';
+    if (!$('adminStatus').dataset.keep)
+      $('adminStatus').textContent = server.updated ? '마지막으로 저장한 때: ' + fmtTime(server.updated) : '';
   }
 
   async function adminToggle() {
@@ -236,47 +337,102 @@
     showAdmin();
   }
 
+  async function save(set) {
+    const body = {};
+    for (const k in set) body[k] = k === 'cal' ? set[k] : await pack(set[k]);
+    const r = await api({ a: 'save', pw: adminPw, set: body });
+    if (!r.ok) throw new Error(r.msg);
+    server.updated = r.updated;
+    cacheSave(r.updated);
+    return r;
+  }
+
   async function loadFile(file) {
     if (!adminPw) return;
-    $('adminStatus').textContent = '파일 읽는 중…';
+    const st = $('adminStatus');
+    st.dataset.keep = 1;
+    st.textContent = '파일 읽는 중…';
     try {
       const buf = await file.arrayBuffer();
-      const data = TTParser.parse(buf);
-      if (!data.dates.length || !data.teachers.length) throw new Error('시간표 형식을 찾지 못했어요.');
+      let kind, data;
+      try {
+        data = TTParser.parse(buf);
+        if (data.dates.length && data.teachers.length) kind = 'data';
+      } catch (e) {}
+      if (!kind) {
+        data = TTParser.parseWeekly(buf, { grades: [1, 2] });
+        kind = 'g12';
+      }
       data.fileName = file.name;
-      setData(data);
-      $('adminStatus').textContent = '선생님들 화면에 올리는 중…';
-      const r = await api({ a: 'save', pw: adminPw, set: { data: await pack(data) } });
-      if (!r.ok) throw new Error(r.msg);
-      server.updated = r.updated;
-      store.set(KEY, JSON.stringify(data));
-      store.set(KEY + '.updated', r.updated);
+      if (kind === 'data') D = data; else W = data;
+      refresh();
+      st.textContent = '선생님들 화면에 올리는 중…';
+      await save({ [kind]: data });
       showAdmin();
-      $('adminStatus').textContent = '✅ 올렸어요! (' + file.name + ' · 선생님 ' + data.teachers.length + '명 · ' + md(data.from) + '~' + md(data.to) + ') 이제 모든 선생님 화면에 이 시간표가 보여요.';
+      st.textContent = '✅ ' + (kind === 'data'
+        ? '3학년 날짜별 시간표를 올렸어요. (' + file.name + ' · ' + md(data.from) + '~' + md(data.to) + ')'
+        : '1·2학년 시간표를 올렸어요. (' + file.name + ' · ' + data.cols.map(c => c.label).join(', ') + ' · 3학년 칸은 뺐어요)')
+        + ' 이제 모든 선생님 화면에 보여요.';
     } catch (e) {
       console.error(e);
-      $('adminStatus').textContent = '⚠️ 올리지 못했어요: ' + e.message;
+      st.textContent = '⚠️ 올리지 못했어요: ' + e.message;
     }
   }
 
+  // ---------- 특별한 날 (1·2학년) ----------
+  function calDates() {
+    const set = new Set(Object.keys(CAL));
+    if (D) D.dates.forEach(d => { if (autoPlan(d).mode !== 'normal') set.add(d); });
+    return [...set].sort();
+  }
+  function planText(p) { return p.mode === 'off' ? '수업 없음' : p.mode === 'dow' ? p.dow + '요일 시간표' : '평소대로'; }
+  function renderCal() {
+    if (!adminPw) return;
+    const rows = calDates().map(d => {
+      const p = plan12(d), a = autoPlan(d);
+      const val = p.mode === 'dow' ? 'dow:' + p.dow : p.mode;
+      const opts = [['normal', '평소대로 (' + dowOf(d) + '요일 시간표)'], ...'월화수목금'.split('').filter(x => x !== dowOf(d)).map(x => ['dow:' + x, x + '요일 시간표로']), ['off', '1·2학년 수업 없음']];
+      const info = D && D.dayInfo[d];
+      const why = [info && info.note, ...(info ? info.events.map(e => e.text) : [])].filter(Boolean).join(', ');
+      return '<tr data-d="' + d + '"><td><b>' + md(d) + ' (' + dowOf(d) + ')</b><div class="auto">' + esc(why || '직접 추가') + '</div></td>'
+        + '<td><select data-k="mode">' + opts.map(([v, t]) => '<option value="' + v + '"' + (v === val ? ' selected' : '') + '>' + t + '</option>').join('') + '</select></td>'
+        + '<td><input data-k="label" type="text" placeholder="표시할 이름 (예: 현장체험)" value="' + esc(p.label || '') + '"></td>'
+        + '<td class="auto">' + (CAL[d] ? '직접 정함 · <a href="#" data-reset="' + d + '">자동으로</a>' : '자동: ' + planText(a)) + '</td></tr>';
+    });
+    $('calTable').innerHTML = '<tr><th>날짜</th><th>1·2학년</th><th>표시</th><th></th></tr>' + (rows.join('') || '<tr><td colspan="4" class="auto">특별한 날이 없어요.</td></tr>');
+  }
+  function readCalRow(tr) {
+    const d = tr.dataset.d;
+    const v = tr.querySelector('[data-k=mode]').value, label = tr.querySelector('[data-k=label]').value.trim();
+    const p = v.startsWith('dow:') ? { mode: 'dow', dow: v.slice(4) } : { mode: v };
+    if (label) p.label = label;
+    const a = autoPlan(d);
+    const same = a.mode === p.mode && (a.dow || '') === (p.dow || '') && (a.label || '') === (p.label || '');
+    if (same) delete CAL[d]; else CAL[d] = p;
+  }
+
   async function init() {
-    // 이 기기에 저장해 둔 사본을 먼저 보여 주고, 저장소에서 최신본을 받아 바꿈
     const s = store.get(KEY);
-    if (s) { try { setData(JSON.parse(s)); } catch (e) {} }
+    if (s) {
+      try {
+        const c = JSON.parse(s);
+        if (c && c.lessons) D = c; else if (c) { D = c.data || null; W = c.g12 || null; CAL = c.cal || {}; }
+      } catch (e) {}
+      if (D || W) refresh();
+    }
     try {
       const r = await fetch(API + '?a=load&t=' + Date.now()).then(r => r.json());
       server = { hasPw: r.hasPw, updated: r.updated };
-      if (r.data && r.updated !== store.get(KEY + '.updated')) {
-        const data = await unpack(r.data);
-        store.set(KEY, JSON.stringify(data));
-        store.set(KEY + '.updated', r.updated);
-        setData(data);
-      } else if (!r.data) {
-        $('dataInfo').textContent = '아직 시간표가 올라오지 않았어요. 담당자가 올리면 볼 수 있어요.';
+      if (r.updated !== store.get(KEY + '.updated')) {
+        D = r.data ? await unpack(r.data) : null;
+        W = r.g12 ? await unpack(r.g12) : null;
+        CAL = r.cal || {};
+        cacheSave(r.updated);
       }
+      refresh();
     } catch (e) {
       console.error(e);
-      if (!D) $('dataInfo').textContent = '시간표를 불러오지 못했어요. 인터넷 연결을 확인하고 새로고침해 주세요.';
+      if (!D && !W) $('dataInfo').textContent = '시간표를 불러오지 못했어요. 인터넷 연결을 확인하고 새로고침해 주세요.';
     }
     showAdmin();
   }
@@ -289,25 +445,64 @@
     else if (q === 'next') { a = addDays(monday(t), 7); b = addDays(a, 4); }
     else if (q === '2w') { a = monday(t); b = addDays(a, 11); }
     else if (q === 'month') { a = new Date(t.getFullYear(), t.getMonth(), 1); b = new Date(t.getFullYear(), t.getMonth() + 1, 0); }
-    else { a = parseIso(D.from); b = parseIso(D.to); }
+    else if (D) { a = parseIso(D.from); b = parseIso(D.to); }
+    else { a = monday(t); b = addDays(a, 4); }
     $('from').value = iso(a); $('to').value = iso(b);
     document.querySelectorAll('#quick button').forEach(x => x.classList.toggle('on', x.dataset.q === q));
     if (!silent) render();
+  }
+
+  function setView(v, silent) {
+    view = v;
+    store.set(VIEW_KEY, v);
+    document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
+    $('nameBox').hidden = v === 'all';
+    $('form').classList.toggle('nonames', v === 'all');
+    $('wrap').classList.toggle('wide', v === 'all');
+    render();
   }
 
   // ---------- 이름 찾기 ----------
   function findTeacher(raw) {
     const n = raw.replace(/\s|선생님|쌤|교사/g, '');
     if (!n) return { name: null, cands: [] };
-    if (byTeacher[n]) return { name: n, cands: [] };
-    const cands = D.teachers.filter(t => t.includes(n) || n.includes(t));
+    const all = allTeachers();
+    if (all.includes(n)) return { name: n, cands: [] };
+    const cands = all.filter(t => t.includes(n) || n.includes(t)).sort((a, b) => a.localeCompare(b, 'ko'));
     return { name: cands.length === 1 ? cands[0] : null, cands };
   }
 
-  // ---------- 화면 ----------
+  function weeksOf(from, to) {
+    const weeks = [];
+    for (let w = monday(parseIso(from)); iso(w) <= to; w = addDays(w, 7)) {
+      const days = [];
+      for (let i = 0; i < 5; i++) { const s = iso(addDays(w, i)); if (s >= from && s <= to) days.push(s); }
+      if (days.length) weeks.push(days);
+    }
+    return weeks;
+  }
+  function getRange() {
+    let from = $('from').value, to = $('to').value;
+    if (!from || !to) return null;
+    if (from > to) [from, to] = [to, from];
+    return [from, to];
+  }
+  const rangeNote = d => D && (D.rangeNotes || []).find(r => d >= r.from && d <= r.to);
+
+  // 그날 3학년 상태: {info, off(하루 전체 행사·자료 없음), label}
+  function day3(d) {
+    if (!D) return { off: true, label: '' };
+    const info = D.dayInfo[d];
+    if (!info) { const rn = rangeNote(d); return { off: true, label: rn ? '3학년 ' + rn.text.replace(/^3\s*학년\s*/, '') : (d < D.from || d > D.to ? '' : '3학년 시간표 없음') }; }
+    const whole = info.events.find(e => e.periods[0] === 1 && e.periods.length >= info.maxP);
+    return { info, off: !!whole, label: whole ? whole.text : '' };
+  }
+
+  // ---------- 개인시간표 ----------
   function render() {
+    if (!D && !W) return;
+    if (view === 'all') return renderAll();
     const out = $('result');
-    if (!D) return;
     const raw = $('name').value.trim();
     const { name, cands } = findTeacher(raw);
     $('suggest').innerHTML = !name && cands.length > 1
@@ -315,117 +510,298 @@
     if (!raw) { out.innerHTML = '<p class="msg">선생님 이름을 입력하세요.</p>'; return; }
     if (!name) {
       out.innerHTML = '<p class="msg">' + (cands.length > 1 ? '위에서 선생님을 골라 주세요.'
-        : '‘' + esc(raw) + '’ 선생님은 3학년 시간표에 없어요. 이름을 다시 확인해 주세요.') + '</p>';
+        : '‘' + esc(raw) + '’ 선생님은 시간표에 없어요. 이름을 다시 확인해 주세요.') + '</p>';
       return;
     }
     store.set(NAME_KEY, name);
-    let from = $('from').value, to = $('to').value;
-    if (!from || !to) { out.innerHTML = '<p class="msg">기간을 선택하세요.</p>'; return; }
-    if (from > to) [from, to] = [to, from];
+    const rg = getRange();
+    if (!rg) { out.innerHTML = '<p class="msg">기간을 선택하세요.</p>'; return; }
+    const [from, to] = rg;
 
-    const mine = {};   // date → p → [lesson]
-    byTeacher[name].forEach(l => {
+    const mine3 = {};
+    (by3[name] || []).forEach(l => {
       if (l.date < from || l.date > to) return;
-      ((mine[l.date] = mine[l.date] || {})[l.p] = mine[l.date][l.p] || []).push(l);
+      ((mine3[l.date] = mine3[l.date] || {})[l.p] = mine3[l.date][l.p] || []).push(l);
     });
+    const mine12 = {};   // 요일 → 교시 → [수업]
+    (by12[name] || []).forEach(l => ((mine12[l.dow] = mine12[l.dow] || {})[l.p] = mine12[l.dow][l.p] || []).push(l));
 
-    // 주 단위로 나누기 (평일만)
-    const weeks = [];
-    for (let w = monday(parseIso(from)); iso(w) <= to; w = addDays(w, 7)) {
-      const days = [];
-      for (let i = 0; i < 5; i++) {
-        const s = iso(addDays(w, i));
-        if (s >= from && s <= to) days.push(s);
-      }
-      if (days.length) weeks.push({ mon: iso(w), days });
-    }
-
+    const weeks = weeksOf(from, to);
     let total = 0, html = '';
-    weeks.forEach(wk => {
-      const maxP = Math.max(4, ...wk.days.map(d => (D.dayInfo[d] || {}).maxP || 0), 6);
+    weeks.forEach(days => {
+      const plans = {}, d3s = {}, dmax = {};
+      days.forEach(d => {
+        plans[d] = W ? plan12(d) : { mode: 'off' };
+        d3s[d] = day3(d);
+        const m12 = plans[d].mode !== 'off' ? (W.maxP[dow12(d, plans[d])] || 0) : 0;
+        const m3 = d3s[d].info && !d3s[d].off ? d3s[d].info.maxP : 0;
+        dmax[d] = Math.max(m12, m3);
+      });
+      const maxP = Math.max(6, ...Object.values(dmax));
+
       let head = '<tr><th class="p"></th>';
       const notes = [];
-      wk.days.forEach(d => {
-        const info = D.dayInfo[d];
-        const rn = (D.rangeNotes || []).find(r => d >= r.from && d <= r.to);
-        let tags = '';
-        if (info && info.note) tags += '<div><span class="tag note">' + esc(info.note) + '</span></div>';
-        if (info && info.excluded.includes(name)) tags += '<div><span class="tag ex">당일수업제외명단</span></div>';
-        if (!info && rn) tags += '<div><span class="tag note">' + esc(rn.text) + '</span></div>';
+      days.forEach(d => {
+        const info = d3s[d].info, p = plans[d];
+        const tags = [];
+        if (info && info.note) tags.push(['note', info.note]);
+        if (W && p.mode === 'dow' && !(info && info.note && info.note.includes(p.dow + '요일')))
+          tags.push(['note', '1·2학년 ' + p.dow + '요일 시간표']);
+        if (W && p.mode === 'off' && !(d3s[d].off && d3s[d].label === p.label) && !(info && p.label && info.note === p.label))
+          tags.push(['note', (/학년/.test(p.label || '') ? '' : '1·2학년 ') + (p.label || '수업 없음')]);
+        if (d3s[d].off && d3s[d].label && !(p.mode === 'off' && d3s[d].label === p.label) && (W || !info))
+          tags.push(['note', /학년/.test(d3s[d].label) ? d3s[d].label : '3학년 ' + d3s[d].label]);
+        if (info) info.events.filter(e => !(e.periods[0] === 1 && e.periods.length >= info.maxP))
+          .forEach(e => tags.push(['note', '3학년 ' + e.text + ' (' + e.periods[0] + '~' + e.periods[e.periods.length - 1] + '교시)']));
+        if (info && info.excluded.includes(name)) tags.push(['ex', '당일수업제외명단']);
         if (info) info.notes.forEach(n => notes.push(md(d) + ' ' + n));
-        head += '<th class="' + (d === today ? 'today' : '') + '"><div class="d">' + md(d) + ' (' + DOW[parseIso(d).getDay()] + ')</div>' + tags + '</th>';
+        head += '<th class="' + (d === today ? 'today' : '') + '"><div class="d">' + md(d) + ' (' + dowOf(d) + ')</div>'
+          + tags.filter(([k, t], i) => tags.findIndex(x => x[1] === t) === i).map(([k, t]) => '<div><span class="tag ' + k + '">' + esc(t) + '</span></div>').join('') + '</th>';
       });
       head += '</tr>';
 
       let body = '', weekCount = 0;
-      const skip = {};   // 행사 칸 rowspan 처리
+      const skip = {};
       for (let p = 1; p <= maxP; p++) {
         body += '<tr><th class="p">' + p + '교시</th>';
-        wk.days.forEach(d => {
+        days.forEach(d => {
           if (skip[d + '|' + p]) return;
-          const info = D.dayInfo[d];
-          if (!info) {
+          const pl = plans[d], s3 = d3s[d];
+          const off12 = !W || pl.mode === 'off';
+          // 1·2·3학년 모두 수업이 없는 날 → 하루 칸 하나로
+          if (off12 && s3.off) {
             if (p === 1) {
-              const rn = (D.rangeNotes || []).find(r => d >= r.from && d <= r.to);
-              body += '<td class="nodata" rowspan="' + maxP + '">' + (rn ? esc(rn.text) : '시간표 없음') + '</td>';
+              const labels = [...new Set([W ? pl.label : '', s3.label].filter(Boolean))];
+              body += '<td class="' + (labels.length ? 'ev' : 'nodata') + '" rowspan="' + maxP + '">' + esc(labels.join(' / ') || '시간표 없음') + '</td>';
+              for (let k = 2; k <= maxP; k++) skip[d + '|' + k] = 1;
             }
             return;
           }
-          const ev = info.events.find(e => e.periods[0] === p);
-          if (ev) {
-            const ps = ev.periods.filter(x => x <= maxP);
-            const span = Math.max(...ps) - p + 1;
-            for (let k = 1; k < span; k++) skip[d + '|' + (p + k)] = 1;
-            body += '<td class="ev" rowspan="' + span + '">' + esc(ev.text) + '</td>';
-            return;
-          }
-          if (info.events.some(e => e.periods.includes(p))) return;
-          const ls = (mine[d] || {})[p] || [];
-          if (!ls.length && p > info.maxP) { body += '<td class="none"></td>'; return; }
-          body += '<td>' + ls.map(l => {
-            if (l.deleted) return '<div class="cell del">' + esc(l.place) + '<small>삭제</small></div>';
-            weekCount++;
-            const study = /도서관|자습/.test(l.place);
-            return '<div class="cell ' + (study ? 's' : 'l') + '">' + esc(study ? '도서관 자습감독' : l.place)
-              + (l.sub ? '<small>' + esc(l.sub) + '</small>' : '') + '</div>';
+          const ls = [];
+          if (!off12) ((mine12[dow12(d, pl)] || {})[p] || []).forEach(l => ls.push({ k: 'g12', big: W.cols.find(c => c.key === l.col)?.label || l.col, small: l.subject }));
+          if (!s3.off && s3.info && !s3.info.events.some(e => e.periods.includes(p)))
+            ((mine3[d] || {})[p] || []).forEach(l => {
+              if (l.deleted) return ls.push({ k: 'del', big: place3(l.place), small: '삭제' });
+              const study = /도서관|자습/.test(l.place);
+              ls.push({ k: study ? 's' : 'l', big: study ? '도서관 자습감독' : place3(l.place), small: l.sub ? '3학년 ' + l.sub : '' });
+            });
+          if (!ls.length && p > dmax[d]) { body += '<td class="none"></td>'; return; }
+          body += '<td>' + ls.map(c => {
+            if (c.k !== 'del') weekCount++;
+            return '<div class="cell ' + c.k + '">' + esc(c.big) + (c.small ? '<small>' + esc(c.small) + '</small>' : '') + '</div>';
           }).join('') + '</td>';
         });
         body += '</tr>';
       }
       total += weekCount;
-      const last = wk.days[wk.days.length - 1];
-      html += '<div class="week"><h3><b>' + md(wk.days[0]) + ' ~ ' + md(last) + '</b> · 수업 ' + weekCount + '시간</h3>'
+      html += '<div class="week"><h3><b>' + md(days[0]) + ' ~ ' + md(days[days.length - 1]) + '</b> · 수업 ' + weekCount + '시간</h3>'
         + '<div class="tt-scroll"><table class="tt"><thead>' + head + '</thead><tbody>' + body + '</tbody></table></div>'
         + (notes.length ? '<div class="notes">※ ' + notes.map(esc).join(' · ') + '</div>' : '') + '</div>';
     });
 
-    const range = md(from) + '(' + DOW[parseIso(from).getDay()] + ') ~ ' + md(to) + '(' + DOW[parseIso(to).getDay()] + ')';
+    const range = md(from) + '(' + dowOf(from) + ') ~ ' + md(to) + '(' + dowOf(to) + ')';
     out.innerHTML = '<div class="card">'
-      + '<div class="summary"><h2>' + esc(name) + ' 선생님</h2><span class="meta">' + range + ' · 3학년 수업 ' + total + '시간</span>'
+      + '<div class="summary"><h2>' + esc(name) + ' 선생님</h2><span class="meta">' + range + ' · 수업 ' + total + '시간</span>'
       + '<span class="actions no-print"><button id="printBtn">🖨️ 인쇄</button></span></div>'
       + (weeks.length ? html : '<p class="msg">선택한 기간에 평일이 없어요.</p>')
-      + '<div class="legend"><span><i style="background:var(--lesson)"></i>수업 (반)</span>'
+      + '<div class="legend">'
+      + (W ? '<span><i style="background:var(--g12)"></i>1·2학년 수업 (반 · 과목)</span>' : '')
+      + '<span><i style="background:var(--lesson)"></i>3학년 수업</span>'
       + '<span><i style="background:var(--study)"></i>도서관 자습감독</span>'
       + '<span><i style="background:var(--event)"></i>학교 행사</span>'
-      + '<span><s style="color:var(--del)">3반</s> 삭제된 수업</span>'
+      + '<span><s style="color:var(--del)">3-3</s> 삭제된 수업</span>'
       + '<span><i style="background:repeating-linear-gradient(135deg,#fafbfc 0 3px,#e5e8ec 3px 6px)"></i>수업 없는 교시</span></div>'
       + '</div>';
     $('printBtn').onclick = () => window.print();
   }
 
+  // ---------- 1~3학년 전체시간표 ----------
+  // 한 주 → 표 모델 {cols, rows:[[{t,k}|null]], merges:[{r,c,rs,cs}], dayEnds:[]}
+  function weekModel(days) {
+    const c12 = W ? W.cols : [];
+    const p3 = places3();
+    const cols = [{ h: '날짜', g: 0 }, { h: '교시', g: 0 },
+      ...c12.map(c => ({ h: c.cls, g: c.grade, key: c.key })),
+      ...p3.map(p => ({ h: /^\d+반$/.test(p) ? p.replace('반', '') : p.replace('도서관 자습감독', '도서관 자습'), g: 3, key: p }))];
+    const o12 = 2, o3 = 2 + c12.length;
+    const rows = [], merges = [], dayEnds = [];
+    days.forEach(d => {
+      const pl = W ? plan12(d) : { mode: 'off' }, s3 = day3(d);
+      const dw = W ? dow12(d, pl) : null;
+      const m12 = W && pl.mode !== 'off' ? (W.maxP[dw] || 0) : 0;
+      const m3 = s3.info && !s3.off ? s3.info.maxP : 0;
+      const n = Math.max(m12, m3, 4);
+      const r0 = rows.length;
+      const info = s3.info;
+      let dayLabel = md(d) + ' (' + dowOf(d) + ')';
+      const sub = [];
+      if (info && info.note) sub.push(info.note);
+      else if (W && pl.mode === 'dow') sub.push(pl.dow + '요일 시간표');
+      for (let p = 1; p <= n; p++) {
+        const row = new Array(cols.length).fill(null).map(() => ({ t: '', k: '' }));
+        row[0] = { t: dayLabel + (sub.length ? '\n' + sub.join(' ') : ''), k: 'day' };
+        row[1] = { t: String(p), k: 'per' };
+        if (W && pl.mode !== 'off' && p <= m12) {
+          W.lessons.filter(l => l.dow === dw && l.p === p).forEach(l => {
+            const ci = o12 + c12.findIndex(c => c.key === l.col);
+            row[ci] = { t: l.subject + (l.teacher ? '\n' + l.teacher : ''), k: 'g12' };
+          });
+        }
+        if (info && !s3.off) {
+          D.lessons.filter(l => l.date === d && l.p === p && !l.deleted).forEach(l => {
+            const ci = o3 + p3.indexOf(l.place);
+            const cur = row[ci].t;
+            row[ci] = { t: cur ? cur + ', ' + l.teacher : l.teacher, k: 'g3' };
+          });
+        }
+        rows.push(row);
+      }
+      merges.push({ r: r0, c: 0, rs: n, cs: 1 });
+      // 1·2학년 쉬는 날
+      if (W && pl.mode === 'off' && c12.length) {
+        rows[r0][o12] = { t: pl.label || '수업 없음', k: 'ev' };
+        merges.push({ r: r0, c: o12, rs: n, cs: c12.length });
+      }
+      // 3학년 행사·자료 없음
+      if (p3.length) {
+        if (s3.off) {
+          rows[r0][o3] = { t: s3.label || '', k: s3.label ? 'ev' : '' };
+          merges.push({ r: r0, c: o3, rs: n, cs: p3.length });
+        } else if (info) {
+          info.events.forEach(e => {
+            const a = e.periods[0], b = Math.min(e.periods[e.periods.length - 1], n);
+            rows[r0 + a - 1][o3] = { t: e.text, k: 'ev' };
+            merges.push({ r: r0 + a - 1, c: o3, rs: b - a + 1, cs: p3.length });
+          });
+        }
+      }
+      dayEnds.push(rows.length - 1);
+    });
+    return { cols, rows, merges, dayEnds, n12: c12.length, n3: p3.length };
+  }
+
+  function renderAll() {
+    const out = $('result');
+    $('suggest').innerHTML = '';
+    const rg = getRange();
+    if (!rg) { out.innerHTML = '<p class="msg">기간을 선택하세요.</p>'; return; }
+    const weeks = weeksOf(rg[0], rg[1]);
+    let html = '';
+    weeks.forEach(days => {
+      const M = weekModel(days);
+      const covered = new Set(), span = {};
+      M.merges.forEach(m => {
+        span[m.r + '|' + m.c] = m;
+        for (let r = m.r; r < m.r + m.rs; r++) for (let c = m.c; c < m.c + m.cs; c++) if (r !== m.r || c !== m.c) covered.add(r + '|' + c);
+      });
+      let head = '<tr><th rowspan="2">날짜</th><th rowspan="2">교시</th>';
+      [1, 2, 3].forEach(g => { const n = M.cols.filter(c => c.g === g).length; if (n) head += '<th class="g' + g + '" colspan="' + n + '">' + g + '학년</th>'; });
+      head += '</tr><tr>' + M.cols.slice(2).map(c => '<th class="g' + c.g + '">' + esc(c.h) + '</th>').join('') + '</tr>';
+      let body = '';
+      M.rows.forEach((row, r) => {
+        body += '<tr' + (M.dayEnds.includes(r) ? ' class="dayend"' : '') + '>';
+        row.forEach((cell, c) => {
+          if (covered.has(r + '|' + c)) return;
+          const m = span[r + '|' + c];
+          const attr = m ? ' rowspan="' + m.rs + '" colspan="' + m.cs + '"' : '';
+          let inner;
+          if (cell.k === 'g12') { const [s, t] = cell.t.split('\n'); inner = '<div class="s">' + esc(s) + '</div><div class="t">' + esc(t || '') + '</div>'; }
+          else inner = esc(cell.t).replace(/\n/g, '<br>');
+          body += '<td class="' + (cell.k === 'day' ? 'day' : cell.k === 'per' ? 'per' : cell.k === 'ev' ? 'ev' : '') + '"' + attr + '>' + inner + '</td>';
+        });
+        body += '</tr>';
+      });
+      html += '<div class="week"><h3><b>' + md(days[0]) + ' ~ ' + md(days[days.length - 1]) + '</b></h3>'
+        + '<div class="tt-scroll"><table class="full"><thead>' + head + '</thead><tbody>' + body + '</tbody></table></div></div>';
+    });
+    out.innerHTML = '<div class="card"><div class="summary"><h2>1~3학년 전체시간표</h2>'
+      + '<span class="meta">' + md(rg[0]) + ' ~ ' + md(rg[1]) + (W ? '' : ' · 1·2학년 시간표가 아직 없어요') + '</span>'
+      + '<span class="actions no-print"><input id="hl" type="text" placeholder="이름 강조" style="width:130px;font-size:14px;padding:7px 10px">'
+      + '<button id="xlsxBtn">📥 엑셀로 받기</button></span></div>'
+      + (weeks.length ? html : '<p class="msg">선택한 기간에 평일이 없어요.</p>') + '</div>';
+    $('xlsxBtn').onclick = () => exportXlsx(weeks, rg);
+    $('hl').oninput = e => {
+      const q = e.target.value.trim();
+      out.querySelectorAll('table.full td').forEach(td => td.classList.toggle('hl', !!q && td.textContent.includes(q) && !td.classList.contains('day')));
+    };
+  }
+
+  // 엑셀: 주마다 시트 하나 (화면과 같은 모양)
+  function exportXlsx(weeks, rg) {
+    const X = window.XLSX;
+    const wb = X.utils.book_new();
+    const thin = { style: 'thin', color: { rgb: 'A0A7B2' } }, thick = { style: 'medium', color: { rgb: '4B5260' } };
+    const fill = { 1: 'E3F0FF', 2: 'E5F6EA', 3: 'FDF0DD', 0: 'EEF1F5' };
+    weeks.forEach(days => {
+      const M = weekModel(days);
+      const aoa = [], merges = [];
+      const h1 = ['날짜', '교시'], h2 = ['', ''];
+      M.cols.slice(2).forEach((c, i) => { h1.push(i === 0 || M.cols[i + 1].g !== c.g ? c.g + '학년' : ''); h2.push(c.h); });
+      aoa.push(h1, h2);
+      merges.push({ s: { r: 0, c: 0 }, e: { r: 1, c: 0 } }, { s: { r: 0, c: 1 }, e: { r: 1, c: 1 } });
+      [1, 2, 3].forEach(g => {
+        const idx = M.cols.map((c, i) => c.g === g ? i : -1).filter(i => i >= 0);
+        if (idx.length > 1) merges.push({ s: { r: 0, c: idx[0] }, e: { r: 0, c: idx[idx.length - 1] } });
+      });
+      M.rows.forEach(row => aoa.push(row.map(c => c.t)));
+      M.merges.forEach(m => merges.push({ s: { r: m.r + 2, c: m.c }, e: { r: m.r + 1 + m.rs, c: m.c + m.cs - 1 } }));
+      const ws = X.utils.aoa_to_sheet(aoa);
+      ws['!merges'] = merges;
+      ws['!cols'] = M.cols.map((c, i) => ({ wch: i === 0 ? 11 : i === 1 ? 4 : 8 }));
+      ws['!rows'] = aoa.map((r, i) => ({ hpt: i < 2 ? 18 : 28 }));
+      for (let r = 0; r < aoa.length; r++) for (let c = 0; c < M.cols.length; c++) {
+        const ref = X.utils.encode_cell({ r, c });
+        if (!ws[ref]) ws[ref] = { t: 's', v: '' };
+        const body = r >= 2 ? M.rows[r - 2][c] : null;
+        const end = r >= 2 && M.dayEnds.includes(r - 2);
+        ws[ref].s = {
+          font: { name: '맑은 고딕', sz: r < 2 ? 10 : 9, bold: r < 2 || (body && (body.k === 'day' || body.k === 'ev')) },
+          alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+          border: { top: thin, left: thin, right: thin, bottom: end ? thick : thin },
+          ...(r < 2 ? { fill: { patternType: 'solid', fgColor: { rgb: fill[M.cols[c].g] } } }
+            : body && body.k === 'ev' ? { fill: { patternType: 'solid', fgColor: { rgb: 'EDEEF1' } } }
+            : body && (body.k === 'day' || body.k === 'per') ? { fill: { patternType: 'solid', fgColor: { rgb: 'F6F7F9' } } } : {}),
+        };
+      }
+      ws['!freeze'] = { xSplit: 2, ySplit: 2 };
+      X.utils.book_append_sheet(wb, ws, (md(days[0]) + '~' + md(days[days.length - 1])).replace(/\//g, '.'));
+    });
+    X.writeFile(wb, '1~3학년 전체시간표 ' + md(rg[0]).replace('/', '.') + '~' + md(rg[1]).replace('/', '.') + '.xlsx');
+  }
+
   // ---------- 이벤트 ----------
   $('name').addEventListener('input', render);
-  $('from').addEventListener('change', () => { document.querySelectorAll('#quick button').forEach(x => x.classList.remove('on')); render(); });
-  $('to').addEventListener('change', () => { document.querySelectorAll('#quick button').forEach(x => x.classList.remove('on')); render(); });
+  const manual = () => { document.querySelectorAll('#quick button').forEach(x => x.classList.remove('on')); render(); };
+  $('from').addEventListener('change', manual);
+  $('to').addEventListener('change', manual);
   $('quick').addEventListener('click', e => { const b = e.target.closest('button'); if (b) quick(b.dataset.q); });
+  $('tabs').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setView(b.dataset.v); });
   $('suggest').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { $('name').value = b.dataset.n; render(); } });
   $('pickBtn').onclick = () => $('file').click();
-  $('adminBtn').onclick = adminToggle;
+  $('adminBtn').onclick = async () => { await adminToggle(); renderCal(); };
   $('file').addEventListener('change', e => { const f = e.target.files[0]; if (f) loadFile(f); e.target.value = ''; });
   const drop = $('drop');
   ['dragenter', 'dragover'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add('over'); }));
   ['dragleave', 'drop'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove('over'); }));
   drop.addEventListener('drop', e => { const f = e.dataTransfer.files[0]; if (f) loadFile(f); });
+
+  $('calTable').addEventListener('change', e => { const tr = e.target.closest('tr[data-d]'); if (tr) { readCalRow(tr); $('calStatus').textContent = '저장하지 않은 변경이 있어요.'; render(); } });
+  $('calTable').addEventListener('click', e => {
+    const a = e.target.closest('[data-reset]');
+    if (a) { e.preventDefault(); delete CAL[a.dataset.reset]; renderCal(); render(); $('calStatus').textContent = '저장하지 않은 변경이 있어요.'; }
+  });
+  $('calAdd').onclick = () => {
+    const d = $('calAddDate').value;
+    if (!d) return;
+    if (!CAL[d]) CAL[d] = { mode: 'off', label: '' };
+    renderCal(); render();
+    $('calStatus').textContent = '저장하지 않은 변경이 있어요.';
+  };
+  $('calSave').onclick = async () => {
+    $('calStatus').textContent = '저장 중…';
+    try { await save({ cal: CAL }); $('calStatus').textContent = '✅ 저장했어요.'; renderCal(); }
+    catch (e) { $('calStatus').textContent = '⚠️ ' + e.message; }
+  };
 
   init();
 })();

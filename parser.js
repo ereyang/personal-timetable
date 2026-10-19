@@ -175,7 +175,73 @@
     };
   }
 
-  const api = { parse };
+  // 요일별 전체시간표(1·2·3학년 칸, 셀 "과목\n교사") → 지정 학년만 추출
+  function parseWeekly(data, opts) {
+    opts = opts || {};
+    const X = opts.XLSX || root.XLSX;
+    const keep = opts.grades || [1, 2];
+    const wb = X.read(u8(data), { type: 'array' });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rng = X.utils.decode_range(ws['!ref']);
+    const raw = (r, c) => { const x = ws[X.utils.encode_cell({ r, c })]; return x && x.v != null ? String(x.v) : ''; };
+    const merges = ws['!merges'] || [];
+    const mv = (r, c) => { const m = merges.find(m => r >= m.s.r && r <= m.e.r && c >= m.s.c && c <= m.e.c); return m ? raw(m.s.r, m.s.c) : raw(r, c); };
+
+    // '교시' 머리칸 찾기
+    let hr = -1, pc = -1;
+    for (let r = 0; r <= Math.min(rng.e.r, 10) && hr < 0; r++)
+      for (let c = 0; c <= Math.min(rng.e.c, 5); c++) if (clean(raw(r, c)) === '교시') { hr = r; pc = c; break; }
+    if (hr < 0) throw new Error('‘교시’ 머리칸을 찾지 못했어요.');
+    // 학년 행(hr) + 반 행(hr+1)
+    const cols = [];
+    for (let c = pc + 1; c <= rng.e.c; c++) {
+      const g = clean(mv(hr, c)).match(/(\d)\s*학년/);
+      if (!g || !keep.includes(+g[1])) continue;
+      const cls = clean(raw(hr + 1, c));
+      if (!cls) continue;
+      cols.push({ c, grade: +g[1], cls });
+    }
+    if (!cols.length) throw new Error('1·2학년 칸을 찾지 못했어요.');
+    // 같은 이름 칸(교과교실 여러 개) 번호 붙이기
+    const seen = {};
+    cols.forEach(o => {
+      const k = o.grade + '|' + o.cls;
+      seen[k] = (seen[k] || 0) + 1;
+    });
+    const cnt = {};
+    cols.forEach(o => {
+      const k = o.grade + '|' + o.cls;
+      cnt[k] = (cnt[k] || 0) + 1;
+      o.label = /^\d+$/.test(o.cls) ? o.grade + '-' + o.cls : o.grade + '학년 ' + o.cls + (seen[k] > 1 ? cnt[k] : '');
+      o.key = o.label;
+    });
+
+    const lessons = [];   // {dow, p, col, subject, teacher}
+    const maxP = {};
+    const teachers = new Set();
+    for (let r = hr + 2; r <= rng.e.r; r++) {
+      const dow = clean(mv(r, pc - 1 >= 0 ? pc - 1 : 0)).charAt(0);
+      const p = parseInt(clean(raw(r, pc)), 10);
+      if (!DAYS.includes(dow) || !p) continue;
+      maxP[dow] = Math.max(maxP[dow] || 0, p);
+      cols.forEach(o => {
+        const lines = raw(r, o.c).replace(/\r/g, '\n').split('\n').map(s => s.trim()).filter(Boolean);
+        if (!lines.length) return;
+        const teacher = lines.length > 1 ? lines[lines.length - 1] : '';
+        const subject = lines.length > 1 ? lines.slice(0, -1).join(' ') : lines[0];
+        splitNames(teacher).forEach(t => teachers.add(t));
+        lessons.push({ dow, p, col: o.key, subject, teacher });
+      });
+    }
+    return {
+      title: clean(raw(0, 0)) || wb.SheetNames[0],
+      cols: cols.map(({ grade, cls, label, key }) => ({ grade, cls, label, key })),
+      lessons, maxP,
+      teachers: [...teachers].sort((a, b) => a.localeCompare(b, 'ko')),
+    };
+  }
+
+  const api = { parse, parseWeekly };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.TTParser = api;
 })(typeof window !== 'undefined' ? window : globalThis);
