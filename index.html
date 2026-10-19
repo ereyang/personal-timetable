@@ -975,12 +975,7 @@
   }
 
   // 두 칸 맞바꾸기
-  let lastSwap = {};
   async function swapKeys(k1, k2) {
-    // 같은 두 칸이 연달아 두 번 바뀌는 것 막기 (한 번 놓았는데 두 번 처리되는 경우)
-    const pair = [k1, k2].sort().join('~');
-    if (lastSwap.pair === pair && Date.now() - lastSwap.t < 3000) return;
-    lastSwap = { pair, t: Date.now() };
     const a = splitKey(k1), b = splitKey(k2);
     const c1 = cellOf(k1), c2 = cellOf(k2);
     if (a.col !== b.col && !confirm(colLabel(a.col) + '과 ' + colLabel(b.col) + '은 다른 반이에요. 그래도 맞바꿀까요?')) return;
