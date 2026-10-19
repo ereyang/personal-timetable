@@ -4,6 +4,8 @@
 // POST {a:'check',pw}      → 담당자 암호 확인
 // POST {a:'save',pw,set}   → set의 키들(data) 저장 (담당자만)
 // POST {a:'chpw',pw,newPw} → 암호 바꾸기
+// POST {a:'chg',pw,ops,add,remove} → 수업 교체를 서버에 있는 최신 내역 위에 합치기 (다른 창·기기에서 한 교체를 덮어쓰지 않음)
+//   ops: [{d,k,v}] (v=null 이면 원래대로), add: 교체 내역 1건, remove: 지울 내역의 id
 var KEYS = ['data', 'g12', 'cal', 'chg'];
 var CHUNK = 2500; // 속성 하나당 9KB 제한 → 한글 3바이트 고려해 2500자씩 나눠 저장
 
@@ -30,9 +32,20 @@ function writeKey(k, v) {
   for (var j = n; j < old; j++) p.deleteProperty('k:' + k + ':' + j);
 }
 
+// 예전에 압축({z})해서 저장한 교체 내역도 읽기
+function readChg() {
+  var v = readKey('chg');
+  if (v && v.z) {
+    var blob = Utilities.newBlob(Utilities.base64Decode(v.z), 'application/x-gzip');
+    v = JSON.parse(Utilities.ungzip(blob).getDataAsString('UTF-8'));
+  }
+  v = v || {};
+  return { CHG: v.CHG || {}, LOG: (v.LOG || []).map(function (e, i) { if (!e.id) e.id = e.at + '#' + i; return e; }) };
+}
+
 function doGet(e) {
   var p = props(), r = { ok: true, hasPw: !!p.getProperty('pw'), updated: p.getProperty('updated') || '' };
-  KEYS.forEach(function (k) { r[k] = readKey(k); });
+  KEYS.forEach(function (k) { r[k] = k === 'chg' ? readChg() : readKey(k); });
   return json(r);
 }
 
@@ -53,7 +66,26 @@ function doPost(e) {
     p.setProperty('pw', hash(b.newPw));
     return json({ ok: true });
   }
+  if (b.a === 'chg') {
+    var lk = LockService.getScriptLock();
+    lk.waitLock(20000);
+    try {
+      var c = readChg();
+      (b.ops || []).forEach(function (o) {
+        if (o.v) { (c.CHG[o.d] = c.CHG[o.d] || {})[o.k] = o.v; }
+        else if (c.CHG[o.d]) { delete c.CHG[o.d][o.k]; if (!Object.keys(c.CHG[o.d]).length) delete c.CHG[o.d]; }
+      });
+      if (b.add) c.LOG.push(b.add);
+      if (b.remove) c.LOG = c.LOG.filter(function (e) { return e.id !== b.remove; });
+      writeKey('chg', c);
+      var t = new Date().toISOString();
+      p.setProperty('updated', t);
+      return json({ ok: true, updated: t, chg: c });
+    } finally { lk.releaseLock(); }
+  }
   if (b.a === 'save') {
+    // 예전 화면이 교체 내역 전체를 덮어쓰지 못하게
+    if (b.set && b.set.chg) return json({ ok: false, msg: '앱이 새로 바뀌었어요. 페이지를 새로고침한 뒤 다시 해 주세요.' });
     var lock = LockService.getScriptLock();
     lock.waitLock(20000);
     try {

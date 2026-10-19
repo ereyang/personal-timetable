@@ -866,35 +866,79 @@
     else (CHG[d] = CHG[d] || {})[k] = { s: val.s || '', t: val.t || '' };
     invalidate();
   }
+  // 교체는 바뀐 칸만 서버로 보내고, 서버가 최신 내역 위에 합쳐서 돌려줌
+  // (다른 창·기기에서 한 교체를 덮어쓰지 않도록)
+  let chgBusy = false;
+  async function sendChg(body, rollback) {
+    render();
+    if (!adminPw) return;
+    chgBusy = true;
+    try {
+      const r = await api({ a: 'chg', pw: adminPw, ...body });
+      if (!r.ok) throw new Error(r.msg);
+      CHG = r.chg.CHG || {}; LOG = r.chg.LOG || [];
+      server.updated = r.updated;
+      cacheSave(r.updated);
+    } catch (e) {
+      rollback();
+      alert('저장하지 못했어요: ' + e.message);
+    } finally {
+      chgBusy = false;
+      invalidate();
+      render();
+    }
+  }
+  const snap = () => JSON.stringify({ CHG, LOG });
+  const restore = s => { const o = JSON.parse(s); CHG = o.CHG; LOG = o.LOG; };
   async function applyOps(ops, desc) {
-    const entry = { at: new Date().toISOString(), desc, cells: [] };
+    if (chgBusy) return alert('저장 중이에요. 잠깐 뒤에 다시 해 주세요.');
+    const old = snap();
+    const entry = { id: new Date().toISOString() + '#' + Math.random().toString(36).slice(2, 7), at: new Date().toISOString(), desc, cells: [] };
+    const send = [];
     ops.forEach(o => {
       const k = o.p + '|' + o.col;
       const before = CHG[o.d] && CHG[o.d][k] ? { ...CHG[o.d][k] } : null;
       setSlot(o.d, k, o.val);
-      entry.cells.push({ d: o.d, k, before, after: CHG[o.d] && CHG[o.d][k] ? { ...CHG[o.d][k] } : null });
+      const after = CHG[o.d] && CHG[o.d][k] ? { ...CHG[o.d][k] } : null;
+      entry.cells.push({ d: o.d, k, before, after });
+      send.push({ d: o.d, k, v: after });
     });
     LOG.push(entry);
-    await persistChg();
+    await sendChg({ ops: send, add: entry }, () => restore(old));
   }
   async function undo(i) {
+    if (chgBusy) return alert('저장 중이에요. 잠깐 뒤에 다시 해 주세요.');
     const e = LOG[i];
     if (!e) return;
-    e.cells.slice().reverse().forEach(c => {
-      if (c.before) (CHG[c.d] = CHG[c.d] || {})[c.k] = c.before;
-      else if (CHG[c.d]) { delete CHG[c.d][c.k]; if (!Object.keys(CHG[c.d]).length) delete CHG[c.d]; }
+    const old = snap();
+    const send = e.cells.slice().reverse().map(c => ({ d: c.d, k: c.k, v: c.before }));
+    send.forEach(o => {
+      if (o.v) (CHG[o.d] = CHG[o.d] || {})[o.k] = o.v;
+      else if (CHG[o.d]) { delete CHG[o.d][o.k]; if (!Object.keys(CHG[o.d]).length) delete CHG[o.d]; }
     });
     LOG.splice(i, 1);
     invalidate();
-    await persistChg();
+    await sendChg({ ops: send, remove: e.id || e.at }, () => restore(old));
   }
-  async function persistChg() {
-    render();
-    if (!adminPw) return;
-    const st = $('swapStatus');
-    try { await save({ chg: { CHG, LOG } }); if (st) st.textContent = '✅ 저장했어요. 선생님들 개인시간표에도 반영돼요.'; }
-    catch (e) { alert('저장하지 못했어요: ' + e.message); }
+
+  // 다른 곳에서 바꾼 내용 받아오기 (창으로 돌아올 때 · 1분마다)
+  async function pull() {
+    if (drag || chgBusy || document.hidden || !$('modal').hidden) return;
+    try {
+      const r = await fetch(API + '?a=load&t=' + Date.now()).then(r => r.json());
+      if (!r.ok || r.updated === server.updated) return;
+      server = { hasPw: r.hasPw, updated: r.updated };
+      D = r.data ? await unpack(r.data) : null;
+      W = r.g12 ? await unpack(r.g12) : null;
+      CAL = r.cal || {};
+      const ch = r.chg ? await unpack(r.chg) : null;
+      CHG = (ch && ch.CHG) || {}; LOG = (ch && ch.LOG) || [];
+      cacheSave(r.updated);
+      if (!drag && !chgBusy) { refresh(); showAdmin(); }
+    } catch (e) {}
   }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) pull(); });
+  setInterval(pull, 60000);
 
   // 칸 키 "날짜|교시|칸" 나누기
   const splitKey = key => { const [d, ps, ...rest] = key.split('|'); return { d, p: +ps, col: rest.join('|') }; };
@@ -931,7 +975,12 @@
   }
 
   // 두 칸 맞바꾸기
+  let lastSwap = {};
   async function swapKeys(k1, k2) {
+    // 같은 두 칸이 연달아 두 번 바뀌는 것 막기 (한 번 놓았는데 두 번 처리되는 경우)
+    const pair = [k1, k2].sort().join('~');
+    if (lastSwap.pair === pair && Date.now() - lastSwap.t < 3000) return;
+    lastSwap = { pair, t: Date.now() };
     const a = splitKey(k1), b = splitKey(k2);
     const c1 = cellOf(k1), c2 = cellOf(k2);
     if (a.col !== b.col && !confirm(colLabel(a.col) + '과 ' + colLabel(b.col) + '은 다른 반이에요. 그래도 맞바꿀까요?')) return;
