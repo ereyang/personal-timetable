@@ -1174,6 +1174,15 @@
     }
   });
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('modal').hidden) closeSwap(); });
+  // 직접 바꾸기 칸에서 엔터 = 넣기 (한글 입력 중이면 글자가 완성된 뒤에)
+  let enterAfterIme = false;
+  const dirEnter = () => { const b = $('dirApply'); if (b && !$('modal').hidden) b.click(); };
+  $('modal').addEventListener('keydown', e => {
+    if (e.key !== 'Enter' || !e.target.matches('#dirT, #dirS')) return;
+    e.preventDefault();
+    if (e.isComposing || e.keyCode === 229) enterAfterIme = true; else dirEnter();
+  });
+  $('modal').addEventListener('compositionend', () => { if (enterAfterIme) { enterAfterIme = false; setTimeout(dirEnter, 0); } });
 
   $('calTable').addEventListener('change', e => { const tr = e.target.closest('tr[data-d]'); if (tr) { readCalRow(tr); $('calStatus').textContent = '저장하지 않은 변경이 있어요.'; render(); } });
   $('calTable').addEventListener('click', e => {
