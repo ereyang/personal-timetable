@@ -1148,8 +1148,11 @@
     if (u && confirm('이 교체를 되돌릴까요?')) undo(+u.dataset.undo);
   });
   const closeSwap = () => { $('modal').hidden = true; swapAt = null; };
+  // 바깥 어두운 곳을 눌렀다 뗐을 때만 닫기 (칸 안에서 글자 고르다 밖에서 떼면 안 닫힘)
+  let downOnBack = false;
+  $('modal').addEventListener('pointerdown', e => { downOnBack = e.target === $('modal'); });
   $('modal').addEventListener('click', async e => {
-    if (e.target === $('modal') || e.target.closest('#swapClose')) return closeSwap();
+    if ((e.target === $('modal') && downOnBack) || e.target.closest('#swapClose')) return closeSwap();
     const w = e.target.closest('[data-who]');
     if (w && swapAt) return openTeacher(swapAt, w.dataset.who);
     if (!swapAt || !adminPw) return;
